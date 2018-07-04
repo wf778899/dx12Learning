@@ -374,7 +374,7 @@ void D3D12Base::OnResize()
 	depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
 	D3D12_CLEAR_VALUE optimalClear;
-	optimalClear.Format = m_DS_bufferFormat;
+	optimalClear.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	optimalClear.DepthStencil.Depth = 1.0f;
 	optimalClear.DepthStencil.Stencil = 0;
 	ThrowIfFailed(m_device->CreateCommittedResource(
