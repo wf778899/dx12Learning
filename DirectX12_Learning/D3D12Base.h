@@ -1,5 +1,6 @@
 #pragma once
-
+// git fetch --all
+// git rebase origin/master
 #include "Helpers/Utilites.h"
 
 using Microsoft::WRL::ComPtr;
