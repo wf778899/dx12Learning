@@ -407,6 +407,7 @@ void D3D12Base::OnResize()
 	m_device->CreateDepthStencilView(m_depthStencilBuffer.Get(), &dsvDesc, DepthStencilView());
 	m_cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_depthStencilBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
 	ThrowIfFailed(m_cmdList->Close());
+
 	ID3D12CommandList* cmdLists[] = { m_cmdList.Get() };
 	m_cmdQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);
 
