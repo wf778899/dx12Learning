@@ -13,10 +13,10 @@ LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 	case WM_ACTIVATE:
 		if (LOWORD(wParam) == WA_INACTIVE) {
 			m_appPaused = true;
-			//TODO: реализовать паузу 
+			m_timer.Stop();
 		} else {
 			m_appPaused = false;
-			//TODO: реализовать возобновление
+			m_timer.Start();
 		}
 		return 0;
 	case WM_SIZE:
@@ -52,13 +52,13 @@ LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 	case WM_ENTERSIZEMOVE:
 		m_appPaused = true;
 		m_appResizing = true;
-		//TODO: реализовать паузу
+		m_timer.Stop();
 		return 0;
 	case WM_EXITSIZEMOVE:
 		m_appPaused = false;
 		m_appResizing = false;
+		m_timer.Start();
 		OnResize();
-		//TODO: реализовать возобновление
 		return 0;
 	case WM_DESTROY:
 		PostQuitMessage(0);
@@ -96,14 +96,14 @@ LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 int D3D12Base::Run()
 {
 	MSG msg = { 0 };
-	//TODO: реализовать тайминг
+	m_timer.Reset();
 
 	while (msg.message != WM_QUIT) {
 		if (PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		} else {
-			//TODO: реализовать тайминг
+			m_timer.Tick();
 			if (!m_appPaused) {
 				//TODO: реализовать CalculateFrameStats(), Update(), Draw()
 			} else {

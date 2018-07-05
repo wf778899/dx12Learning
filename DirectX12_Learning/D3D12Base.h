@@ -1,8 +1,7 @@
 #pragma once
-//git fetch --all
-//git rebase origin/master
 
 #include "Helpers/Utilites.h"
+#include "GameTimer.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -80,6 +79,9 @@ protected:
 	UINT32 m_windowHeight = 600;
 	UINT8 m_msQualityLevels = 0;
 	UINT8 m_currentBackBuffer = 0;
+
+	GameTimer m_timer;
+
 	std::wstring m_mainWindowTitle = L"DirectX 12 window";
 
 	D3D12Base(const D3D12Base &copy) = delete;

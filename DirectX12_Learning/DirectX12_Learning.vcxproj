@@ -149,6 +149,7 @@
   <ItemGroup>
     <ClInclude Include="D3D12Base.h" />
     <ClInclude Include="D3D12Engine.h" />
+    <ClInclude Include="GameTimer.h" />
     <ClInclude Include="Helpers\Defines.h" />
     <ClInclude Include="Helpers\Utilites.h" />
     <ClInclude Include="Resource.h" />
@@ -158,6 +159,7 @@
   <ItemGroup>
     <ClCompile Include="D3D12Base.cpp" />
     <ClCompile Include="D3D12Engine.cpp" />
+    <ClCompile Include="GameTimer.cpp" />
     <ClCompile Include="Helpers\Utilites.cpp">
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">../stdafx.h</PrecompiledHeaderFile>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">../stdafx.h</PrecompiledHeaderFile>
