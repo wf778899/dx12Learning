@@ -1,8 +1,7 @@
 #pragma once
-//git fetch --all
-//git rebase origin/master
 
 #include "Helpers/Utilites.h"
+#include "GameTimer.h"
 
 using Microsoft::WRL::ComPtr;
 
@@ -29,15 +28,15 @@ protected:
 
 	virtual bool InitMainWindow();
 	virtual bool InitDirect3D();
+	virtual void CreateDescriptorHeaps();
+	virtual void OnResize();
 
 	void LogAdapters();
 	void LogAdapterOutputs(IDXGIAdapter1 *adapter1);
 	void LogOutputDisplayModes(IDXGIOutput *output);
 	void CreateCommandObjects();
 	void CreateSwapChain();
-	void CreateDescriptorHeaps();
-
-	void OnResize();
+	void FlushCommandQueue();
 
 	ID3D12Resource *CurrentBackBuffer();
 	D3D12_CPU_DESCRIPTOR_HANDLE CurrentBackBufferView();
@@ -68,16 +67,21 @@ protected:
 	ComPtr<ID3D12Resource> m_swapChainBuffers[m_swapChainBuffersCount];
 	ComPtr<ID3D12Resource> m_depthStencilBuffer;
 
+	D3D12_VIEWPORT m_viewPort;
+	D3D12_RECT m_scissorRect;
 	DXGI_FORMAT m_backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-	DXGI_FORMAT m_DS_bufferFormat = DXGI_FORMAT_R24G8_TYPELESS; //был DXGI_FORMAT_D24_UNORM_S8_UINT, но для использования совместно вьюхами
-	UINT64 m_currentFence = 0;									//DSV format: DXGI_FORMAT_D24_UNORM_S8_UINT
-	UINT64 m_RTV_descriptorSize = 0;							//SRV format: DXGI_FORMAT_R24_UNORM_X8_TYPELESS нужен такой формат.
+	DXGI_FORMAT m_DS_bufferFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	UINT64 m_currentFence = 0;
+	UINT64 m_RTV_descriptorSize = 0;
 	UINT64 m_DSV_descriptrSize = 0;
 	UINT64 m_CBV_SRV_UAV_descriptorSize = 0;
 	UINT32 m_windowWidth = 800;
 	UINT32 m_windowHeight = 600;
 	UINT8 m_msQualityLevels = 0;
 	UINT8 m_currentBackBuffer = 0;
+
+	GameTimer m_timer;
+
 	std::wstring m_mainWindowTitle = L"DirectX 12 window";
 
 	D3D12Base(const D3D12Base &copy) = delete;

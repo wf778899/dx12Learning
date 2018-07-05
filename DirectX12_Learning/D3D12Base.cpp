@@ -13,10 +13,10 @@ LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 	case WM_ACTIVATE:
 		if (LOWORD(wParam) == WA_INACTIVE) {
 			m_appPaused = true;
-			//TODO: реализовать паузу 
+			m_timer.Stop();
 		} else {
 			m_appPaused = false;
-			//TODO: реализовать возобновление
+			m_timer.Start();
 		}
 		return 0;
 	case WM_SIZE:
@@ -31,19 +31,20 @@ LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 				m_appPaused = false;
 				m_appMinimized = false;
 				m_appMaximized = true;
+				OnResize();
 			} else if (wParam == SIZE_RESTORED) {
 				if (m_appMinimized) {
 					m_appPaused = false;
 					m_appMinimized = false;
-					//TODO: реализовать onResize()
+					OnResize();
 				} else if (m_appMaximized) {
 					m_appPaused = false;
 					m_appMaximized = false;
-					//TODO: реализовать onResize()
+					OnResize();
 				} else if (m_appResizing) {
 
 				} else {
-					//TODO: реализовать onResize()
+					OnResize();
 				}
 			}
 		}
@@ -51,12 +52,13 @@ LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 	case WM_ENTERSIZEMOVE:
 		m_appPaused = true;
 		m_appResizing = true;
-		//TODO: реализовать паузу
+		m_timer.Stop();
 		return 0;
 	case WM_EXITSIZEMOVE:
 		m_appPaused = false;
 		m_appResizing = false;
-		//TODO: реализовать возобновление, реализовать onResize()
+		m_timer.Start();
+		OnResize();
 		return 0;
 	case WM_DESTROY:
 		PostQuitMessage(0);
@@ -94,14 +96,14 @@ LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 int D3D12Base::Run()
 {
 	MSG msg = { 0 };
-	//TODO: реализовать тайминг
+	m_timer.Reset();
 
 	while (msg.message != WM_QUIT) {
 		if (PeekMessage(&msg, 0, 0, 0, PM_REMOVE)) {
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		} else {
-			//TODO: реализовать тайминг
+			m_timer.Tick();
 			if (!m_appPaused) {
 				//TODO: реализовать CalculateFrameStats(), Update(), Draw()
 			} else {
@@ -336,13 +338,25 @@ void D3D12Base::CreateDescriptorHeaps()
 	ThrowIfFailed(m_device->CreateDescriptorHeap(&DSV_heap_desc, IID_PPV_ARGS(m_DSV_heap.GetAddressOf())));
 }
 
+void D3D12Base::FlushCommandQueue()
+{
+	m_currentFence++;
+	ThrowIfFailed(m_cmdQueue->Signal(m_fence.Get(), m_currentFence));
+	if (m_fence->GetCompletedValue() < m_currentFence) {
+		HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+		ThrowIfFailed(m_fence->SetEventOnCompletion(m_currentFence, eventHandle));
+		WaitForSingleObject(eventHandle, INFINITE);
+		CloseHandle(eventHandle);
+	}
+}
+
 void D3D12Base::OnResize()
 {
 	assert(m_device);
 	assert(m_swapChain);
 	assert(m_cmdAllocator);
 
-	//TODO: добавить FlushCommandQueue()
+	FlushCommandQueue();
 
 	ThrowIfFailed(m_cmdList->Reset(m_cmdAllocator.Get(), nullptr));
 	for (int i = 0; i < m_swapChainBuffersCount; ++i) {
@@ -360,26 +374,55 @@ void D3D12Base::OnResize()
 		rtvHeapHandle.Offset(1, m_RTV_descriptorSize);
 	}
 
-	D3D12_RESOURCE_DESC DSResourceDesc;
-	DSResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-	DSResourceDesc.Alignment = 0;
-	DSResourceDesc.Width = m_windowWidth;
-	DSResourceDesc.Height = m_windowHeight;
-	DSResourceDesc.DepthOrArraySize = 1;
-	DSResourceDesc.MipLevels = 1;
-	DSResourceDesc.Format = m_DS_bufferFormat;
-	DSResourceDesc.SampleDesc.Count = m_multisamplingEnabled ? 4 : 1;
-	DSResourceDesc.SampleDesc.Quality = m_multisamplingEnabled ? (m_msQualityLevels - 1) : 0;
-	DSResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	DSResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+	// Формат ресурса DXGI_FORMAT_R24G8_TYPELESS, т.к.он будет использоваться двумя вьюхами: SRV (формат DXGI_FORMAT_R24_UNORM_X8_TYPELESS) и
+	// DSV (формат DXGI_FORMAT_D24_UNORM_S8_UINT).
+	D3D12_RESOURCE_DESC depthStencilDesc;
+	depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	depthStencilDesc.Alignment = 0;
+	depthStencilDesc.Width = m_windowWidth;
+	depthStencilDesc.Height = m_windowHeight;
+	depthStencilDesc.DepthOrArraySize = 1;
+	depthStencilDesc.MipLevels = 1;
+	depthStencilDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
+	depthStencilDesc.SampleDesc.Count = m_multisamplingEnabled ? 4 : 1;
+	depthStencilDesc.SampleDesc.Quality = m_multisamplingEnabled ? (m_msQualityLevels - 1) : 0;
+	depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
 	D3D12_CLEAR_VALUE optimalClear;
-	optimalClear.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	optimalClear.Format = m_DS_bufferFormat;
 	optimalClear.DepthStencil.Depth = 1.0f;
 	optimalClear.DepthStencil.Stencil = 0;
+
 	ThrowIfFailed(m_device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &DSResourceDesc, D3D12_RESOURCE_STATE_COMMON, &optimalClear,
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &depthStencilDesc, D3D12_RESOURCE_STATE_COMMON, &optimalClear,
 		IID_PPV_ARGS(m_depthStencilBuffer.GetAddressOf())));
+
+	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
+	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
+	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
+	dsvDesc.Format = m_DS_bufferFormat;
+	dsvDesc.Texture2D.MipSlice = 0;
+
+	m_device->CreateDepthStencilView(m_depthStencilBuffer.Get(), &dsvDesc, DepthStencilView());
+	m_cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_depthStencilBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
+	ThrowIfFailed(m_cmdList->Close());
+	ID3D12CommandList* cmdLists[] = { m_cmdList.Get() };
+	m_cmdQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);
+
+	FlushCommandQueue();
+
+	m_viewPort.TopLeftX = 0;
+	m_viewPort.TopLeftY = 0;
+	m_viewPort.Width = static_cast<float>(m_windowWidth);
+	m_viewPort.Height = static_cast<float>(m_windowHeight);
+	m_viewPort.MinDepth = 0.0f;
+	m_viewPort.MaxDepth = 1.0f;
+
+	m_scissorRect.top = 0;
+	m_scissorRect.left = 0;
+	m_scissorRect.bottom = m_windowHeight;
+	m_scissorRect.right = m_windowWidth;
 
 }
 
