@@ -360,25 +360,25 @@ void D3D12Base::OnResize()
 		rtvHeapHandle.Offset(1, m_RTV_descriptorSize);
 	}
 
-	D3D12_RESOURCE_DESC depthStencilDesc;
-	depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
-	depthStencilDesc.Alignment = 0;
-	depthStencilDesc.Width = m_windowWidth;
-	depthStencilDesc.Height = m_windowHeight;
-	depthStencilDesc.DepthOrArraySize = 1;
-	depthStencilDesc.MipLevels = 1;
-	depthStencilDesc.Format = m_DS_bufferFormat;
-	depthStencilDesc.SampleDesc.Count = m_multisamplingEnabled ? 4 : 1;
-	depthStencilDesc.SampleDesc.Quality = m_multisamplingEnabled ? (m_msQualityLevels - 1) : 0;
-	depthStencilDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
-	depthStencilDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
+	D3D12_RESOURCE_DESC DSResourceDesc;
+	DSResourceDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
+	DSResourceDesc.Alignment = 0;
+	DSResourceDesc.Width = m_windowWidth;
+	DSResourceDesc.Height = m_windowHeight;
+	DSResourceDesc.DepthOrArraySize = 1;
+	DSResourceDesc.MipLevels = 1;
+	DSResourceDesc.Format = m_DS_bufferFormat;
+	DSResourceDesc.SampleDesc.Count = m_multisamplingEnabled ? 4 : 1;
+	DSResourceDesc.SampleDesc.Quality = m_multisamplingEnabled ? (m_msQualityLevels - 1) : 0;
+	DSResourceDesc.Layout = D3D12_TEXTURE_LAYOUT_UNKNOWN;
+	DSResourceDesc.Flags = D3D12_RESOURCE_FLAG_ALLOW_DEPTH_STENCIL;
 
 	D3D12_CLEAR_VALUE optimalClear;
 	optimalClear.Format = DXGI_FORMAT_D24_UNORM_S8_UINT;
 	optimalClear.DepthStencil.Depth = 1.0f;
 	optimalClear.DepthStencil.Stencil = 0;
 	ThrowIfFailed(m_device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &depthStencilDesc, D3D12_RESOURCE_STATE_COMMON, &optimalClear,
+		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &DSResourceDesc, D3D12_RESOURCE_STATE_COMMON, &optimalClear,
 		IID_PPV_ARGS(m_depthStencilBuffer.GetAddressOf())));
 
 }
