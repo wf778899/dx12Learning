@@ -25,18 +25,18 @@ public:
 protected:
 	D3D12Base(HINSTANCE hInstance);
 	virtual ~D3D12Base();
-
-	virtual bool InitMainWindow();
-	virtual bool InitDirect3D();
 	virtual void CreateDescriptorHeaps();
 	virtual void OnResize();
 
+	bool InitMainWindow();
+	bool InitDirect3D();
 	void LogAdapters();
 	void LogAdapterOutputs(IDXGIAdapter1 *adapter1);
 	void LogOutputDisplayModes(IDXGIOutput *output);
 	void CreateCommandObjects();
 	void CreateSwapChain();
 	void FlushCommandQueue();
+	void CalculateFrameStats();
 
 	ID3D12Resource *CurrentBackBuffer();
 	D3D12_CPU_DESCRIPTOR_HANDLE CurrentBackBufferView();

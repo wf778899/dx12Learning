@@ -105,7 +105,8 @@ int D3D12Base::Run()
 		} else {
 			m_timer.Tick();
 			if (!m_appPaused) {
-				//TODO: реализовать CalculateFrameStats(), Update(), Draw()
+				CalculateFrameStats();
+				//TODO: реализовать Update(), Draw()
 			} else {
 				Sleep(100);
 			}
@@ -241,6 +242,8 @@ bool D3D12Base::InitMainWindow()
 
 D3D12Base::~D3D12Base()
 {
+	if (m_device != nullptr)
+		FlushCommandQueue();
 }
 
 void D3D12Base::LogAdapters()
@@ -349,6 +352,26 @@ void D3D12Base::FlushCommandQueue()
 		CloseHandle(eventHandle);
 	}
 }
+
+
+void D3D12Base::CalculateFrameStats()
+{
+	static int frameCnt = 0;
+	static float timeElapsed = 0.0f;
+	frameCnt++;
+	if ((m_timer.TotalTime() - timeElapsed) >= 1.0f) {
+		float fps = (float)frameCnt;
+		float msPerFrame = 1000.0f / fps;
+		std::wstring fpsStr = std::to_wstring(fps);
+		std::wstring msPerFrameStr = std::to_wstring(msPerFrame);
+		std::wstring windowText = m_mainWindowTitle + L"        FPS: " + fpsStr + L" msPerFrame: " + msPerFrameStr;
+		SetWindowText(m_hWindow, windowText.c_str());
+
+		frameCnt = 0;
+		timeElapsed += 1.0f;
+	}
+}
+
 
 void D3D12Base::OnResize()
 {
