@@ -27,6 +27,8 @@ protected:
 	virtual ~D3D12Base();
 	virtual void CreateDescriptorHeaps();
 	virtual void OnResize();
+	virtual void Update(const GameTimer &timer) = 0;
+	virtual void Draw(const GameTimer &timer) = 0;
 
 	bool InitMainWindow();
 	bool InitDirect3D();

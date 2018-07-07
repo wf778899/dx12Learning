@@ -9,5 +9,10 @@ public:
 	~D3D12Engine();
 
 	virtual bool Initialize() override;
+
+private:
+	virtual void OnResize() override;
+	virtual void Update(const GameTimer &timer) override;
+	virtual void Draw(const GameTimer &timer) override;
 };
 
