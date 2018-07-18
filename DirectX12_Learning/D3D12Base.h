@@ -3,8 +3,6 @@
 #include "Helpers/Utilites.h"
 #include "GameTimer.h"
 
-using Microsoft::WRL::ComPtr;
-
 class D3D12Base
 {
 public:

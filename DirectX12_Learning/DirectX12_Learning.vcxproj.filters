@@ -39,9 +39,6 @@
     <ClInclude Include="Helpers\Utilites.h">
       <Filter>Файлы заголовков\Helpers</Filter>
     </ClInclude>
-    <ClInclude Include="Helpers\Defines.h">
-      <Filter>Файлы заголовков\Helpers</Filter>
-    </ClInclude>
     <ClInclude Include="GameTimer.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
