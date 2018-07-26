@@ -5,100 +5,10 @@
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
 
-struct SubmeshGeometry
-{
-	UINT IndexCount = 0;
-	UINT StartIndexLocation = 0;
-	INT BaseVertexLocation = 0;
+UINT8 D3D12GetFormatPlaneCount(_In_ ID3D12Device *pDevice, DXGI_FORMAT format);
+UINT D3D12CalcSubresource(UINT MipSlice, UINT ArraySlice, UINT PlaneSlice, UINT MipLevels, UINT ArraySize);
 
-	BoundingBox Bounds;
-};
-
-struct MeshGeometry
-{
-	std::string Name;
-	ComPtr<ID3DBlob> VertexBufferCPU = nullptr;
-	ComPtr<ID3DBlob> IndexBufferCPU = nullptr;
-	ComPtr<ID3D12Resource> VertexBufferGPU = nullptr;
-	ComPtr<ID3D12Resource> IndexBufferGPU = nullptr;
-	ComPtr<ID3D12Resource> VertexBufferUploader = nullptr;
-	ComPtr<ID3D12Resource> IndexBufferUploader = nullptr;
-
-	UINT VertexByteStride = 0;
-	UINT VertexBufferByteSize = 0;
-	DXGI_FORMAT IndexFormat = DXGI_FORMAT_R16_UINT;
-	UINT IndexBufferByteSize = 0;
-	std::unordered_map<std::string, SubmeshGeometry> DrawArgs;
-
-	D3D12_VERTEX_BUFFER_VIEW VertexBufferView() const {
-		D3D12_VERTEX_BUFFER_VIEW vb_view;
-		vb_view.BufferLocation = VertexBufferGPU->GetGPUVirtualAddress();
-		vb_view.StrideInBytes = VertexByteStride;
-		vb_view.SizeInBytes = VertexBufferByteSize;
-		return vb_view;
-	}
-
-	D3D12_INDEX_BUFFER_VIEW IndexBufferView() const {
-		D3D12_INDEX_BUFFER_VIEW ib_view;
-		ib_view.BufferLocation = IndexBufferGPU->GetGPUVirtualAddress();
-		ib_view.Format = IndexFormat;
-		ib_view.SizeInBytes = IndexBufferByteSize;
-		return ib_view;
-	}
-
-	void DisposeUploaders() {
-		VertexBufferUploader = nullptr;
-		IndexBufferUploader = nullptr;
-	}
-};
-
-
-inline UINT64 UpdateSubresources(_In_ ID3D12GraphicsCommandList *cmdList,
-								 _In_ ID3D12Resource *destinationResource,
-								 _In_ ID3D12Resource *sourceResource,
-								 _In_range_(0, D3D12_REQ_SUBRESOURCES) UINT firstSubresource,
-								 _In_range_(0, D3D12_REQ_SUBRESOURCES - firstSubresource) UINT numSubresources,
-								 UINT64 requiredSize,
-								 _In_reads_(numSubresources) const D3D12_PLACED_SUBRESOURCE_FOOTPRINT *layouts,
-								 _In_reads_(numSubresources) const UINT *numRows,
-								 _In_reads_(numSubresources) const UINT64 *rowSizesInBytes,
-								 _In_reads_(numSubresources) const D3D12_SUBRESOURCE_DATA *sourceData) {
-	D3D12_RESOURCE_DESC sourceDesc = sourceResource->GetDesc();
-	D3D12_RESOURCE_DESC destinDesc = destinationResource->GetDesc();
-	if (sourceDesc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER || sourceDesc.Width < requiredSize + layouts[0].Offset || requiredSize >(SIZE_T) - 1 ||
-		(destinDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER && (firstSubresource != 0 || numSubresources != 1))) {
-		return 0;
-	}
-	BYTE *data;
-	if(FAILED(sourceResource->Map(0, NULL, reinterpret_cast<void**>(&data))))
-		return 0;
-	for (UINT i = 0; i < numSubresources; ++i) {
-		if (rowSizesInBytes[i] > (SIZE_T)-1)
-			return 0;
-		D3D12_MEMCPY_DEST destData = { data + layouts[i].Offset, layouts[i].Footprint.RowPitch, layouts[i].Footprint.RowPitch * numRows[i] };
-	}
-
-}
-
-template <UINT MaxSubresources> inline UINT64 UpdateSubresources(_In_ ID3D12GraphicsCommandList *cmdList,
-																 _In_ ID3D12Resource *destinationResource,
-																 _In_ ID3D12Resource *sourceResource,
-																 UINT64 sourceOffset,
-																 _In_range_(0, MaxSubresources) UINT firstSubresource,
-																 _In_range_(1, MaxSubresources - firstSubresource) UINT numSubresources,
-																 _In_reads_(numSubresources) D3D12_SUBRESOURCE_DATA *sourceData) {
-	UINT64 requiredSize = 0;
-	D3D12_PLACED_SUBRESOURCE_FOOTPRINT layouts[MaxSubresources];
-	UINT numRows[MaxSubresources];
-	UINT64 rowSizesInBytes[MaxSubresources];
-
-	D3D12_RESOURCE_DESC desc = destinationResource->GetDesc();
-	ID3D12Device *device;
-	destinationResource->GetDevice(__uuidof(*device), reinterpret_cast<void**>(&device));
-	device->GetCopyableFootprints(&desc, firstSubresource, numSubresources, sourceOffset, layouts, numRows, rowSizesInBytes, requiredSize);
-	device->Release();
-}
-
+//------------------------------------------------------Œ¡®–“ » Œ“ MICROSOFT---------------------------------------------------------------
 
 struct CD3DX12_DEFAULT {};
 
@@ -220,15 +130,6 @@ inline bool operator==(const D3D12_HEAP_PROPERTIES &l, const D3D12_HEAP_PROPERTI
 }
 inline bool operator!=(const D3D12_HEAP_PROPERTIES &l, const D3D12_HEAP_PROPERTIES &r) { return !(r == l); }
 
-inline UINT D3D12CalcSubresource(UINT MipSlice, UINT ArraySlice, UINT PlaneSlice, UINT MipLevels, UINT ArraySize) {
-	return MipSlice + ArraySlice * MipLevels + PlaneSlice * MipLevels * ArraySize;
-}
-inline UINT8 D3D12GetFormatPlaneCount(_In_ ID3D12Device *pDevice, DXGI_FORMAT format) {
-	D3D12_FEATURE_DATA_FORMAT_INFO formatInfo = { format };
-	if (FAILED(pDevice->CheckFeatureSupport(D3D12_FEATURE_FORMAT_INFO, &formatInfo, sizeof(formatInfo))))
-		return 0;
-	return formatInfo.PlaneCount;
-}
 struct CD3DX12_RESOURCE_DESC : public D3D12_RESOURCE_DESC {
 	CD3DX12_RESOURCE_DESC() {}
 	explicit CD3DX12_RESOURCE_DESC(const D3D12_RESOURCE_DESC &other) : D3D12_RESOURCE_DESC(other) {}
@@ -296,12 +197,30 @@ struct CD3DX12_RESOURCE_DESC : public D3D12_RESOURCE_DESC {
 		UINT64 alignment = 0) {
 		return CD3DX12_RESOURCE_DESC(D3D12_RESOURCE_DIMENSION_TEXTURE3D, alignment, width, height, depth, mipLevels, format, 1, 0, layout, flags);
 	}
-	inline UINT16 Depth() const { return (Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE3D ? DepthOrArraySize : 1); }
-	inline UINT16 ArraySize() const { return (Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE3D ? DepthOrArraySize : 1); }
-	inline UINT8 PlaneCount(_In_ ID3D12Device *pDevice) const { return D3D12GetFormatPlaneCount(pDevice, Format); }
-	inline UINT Subresources(_In_ ID3D12Device *pDevice) const { return MipLevels * ArraySize() * PlaneCount(pDevice); }
-	inline UINT CalcSubresource(UINT MipSlice, UINT ArraySlice, UINT PlaneSlice) { return D3D12CalcSubresource(MipSlice, ArraySlice, PlaneSlice, MipLevels, ArraySize()); }
-	operator const D3D12_RESOURCE_DESC& () const { return *this; }
+	inline UINT16 Depth() const 
+	{
+		return (Dimension == D3D12_RESOURCE_DIMENSION_TEXTURE3D ? DepthOrArraySize : 1); 
+	}
+	inline UINT16 ArraySize() const
+	{
+		return (Dimension != D3D12_RESOURCE_DIMENSION_TEXTURE3D ? DepthOrArraySize : 1); 
+	}
+	inline UINT8 PlaneCount(_In_ ID3D12Device *pDevice) const
+	{
+		return D3D12GetFormatPlaneCount(pDevice, Format); 
+	}
+	inline UINT Subresources(_In_ ID3D12Device *pDevice) const 
+	{
+		return MipLevels * ArraySize() * PlaneCount(pDevice); 
+	}
+	inline UINT CalcSubresource(UINT MipSlice, UINT ArraySlice, UINT PlaneSlice) 
+	{
+		return D3D12CalcSubresource(MipSlice, ArraySlice, PlaneSlice, MipLevels, ArraySize()); 
+	}
+	operator const D3D12_RESOURCE_DESC& () const 
+	{
+		return *this; 
+	}
 };
 inline bool operator==(const D3D12_RESOURCE_DESC &l, const D3D12_RESOURCE_DESC &r) {
 	return
@@ -317,12 +236,216 @@ inline bool operator==(const D3D12_RESOURCE_DESC &l, const D3D12_RESOURCE_DESC &
 		l.Layout == r.Layout &&
 		l.Flags == r.Flags;
 }
-inline bool operator!=(const D3D12_RESOURCE_DESC &l, const D3D12_RESOURCE_DESC &r) { return l != r; }
+inline bool operator!=(const D3D12_RESOURCE_DESC &l, const D3D12_RESOURCE_DESC &r) { return !(l == r); }
+
+struct CD3DX12_BOX : public D3D12_BOX
+{
+	CD3DX12_BOX() {};
+	explicit CD3DX12_BOX(const D3D12_BOX &other) : D3D12_BOX(other) {}
+	explicit CD3DX12_BOX(LONG left, LONG right) {
+		this->left = left;
+		this->right = right;
+		top = 0;
+		bottom = 1;
+		front = 0;
+		back = 1;
+	}
+	explicit CD3DX12_BOX(LONG left, LONG right, LONG top, LONG bottom) {
+		this->left = left;
+		this->right = right;
+		this->top = top;
+		this->bottom = bottom;
+		front = 0;
+		back = 1;
+	}
+	explicit CD3DX12_BOX(LONG left, LONG right, LONG top, LONG bottom, LONG front, LONG back) {
+		this->left = left;
+		this->right = right;
+		this->top = top;
+		this->bottom = bottom;
+		this->front = front;
+		this->back = back;
+	}
+	~CD3DX12_BOX() {};
+	operator const D3D12_BOX&() const { return *this; }
+};
+inline bool operator==(const D3D12_BOX &l, const D3D12_BOX &r) {
+	return l.left == r.left && l.right == r.right && l.top == r.top && l.bottom == r.bottom && l.front == r.front && l.back == r.back;
+}
+inline bool operator!=(const D3D12_BOX &l, const D3D12_BOX &r) { return !(l == r); }
+
+struct CD3DX12_TEXTURE_COPY_LOCATION : public D3D12_TEXTURE_COPY_LOCATION
+{
+	CD3DX12_TEXTURE_COPY_LOCATION() {}
+	explicit CD3DX12_TEXTURE_COPY_LOCATION(const D3D12_TEXTURE_COPY_LOCATION &other) : D3D12_TEXTURE_COPY_LOCATION(other) {}
+	CD3DX12_TEXTURE_COPY_LOCATION(ID3D12Resource *res) { pResource = res; }
+	CD3DX12_TEXTURE_COPY_LOCATION(ID3D12Resource *res, D3D12_PLACED_SUBRESOURCE_FOOTPRINT const &footprint) {
+		pResource = res;
+		Type = D3D12_TEXTURE_COPY_TYPE_PLACED_FOOTPRINT;
+		PlacedFootprint = footprint;
+	}
+	CD3DX12_TEXTURE_COPY_LOCATION(ID3D12Resource *res, UINT sub) {
+		pResource = res;
+		Type = D3D12_TEXTURE_COPY_TYPE_SUBRESOURCE_INDEX;
+		SubresourceIndex = sub;
+	}
+};
+
+struct CD3DX12_DESCRIPTOR_RANGE : public D3D12_DESCRIPTOR_RANGE
+{
+
+};
+
+//--------------------------------------------------‘”Õ ÷»» ƒÀﬂ Œ¡Ã≈Õ¿ ƒ¿ÕÕ€Ã» — GPU-------------------------------------------------------
+
+inline UINT D3D12CalcSubresource(UINT MipSlice, UINT ArraySlice, UINT PlaneSlice, UINT MipLevels, UINT ArraySize) {
+	return MipSlice + ArraySlice * MipLevels + PlaneSlice * MipLevels * ArraySize;
+}
+
+
+inline UINT8 D3D12GetFormatPlaneCount(_In_ ID3D12Device *pDevice, DXGI_FORMAT format) {
+	D3D12_FEATURE_DATA_FORMAT_INFO formatInfo = { format };
+	if (FAILED(pDevice->CheckFeatureSupport(D3D12_FEATURE_FORMAT_INFO, &formatInfo, sizeof(formatInfo))))
+		return 0;
+	return formatInfo.PlaneCount;
+}
+
+
+inline void MemcpySubresource(_In_ const D3D12_MEMCPY_DEST *dest, 
+							  _In_ const D3D12_SUBRESOURCE_DATA *srcData, 
+							  SIZE_T rowSizeInBytes, 
+							  UINT numRows, 
+							  UINT numSlices) {
+	for (UINT i = 0; i < numSlices; ++i) {
+		BYTE *destSlice = reinterpret_cast<BYTE*>(dest->pData) + dest->SlicePitch * i;
+		const BYTE *srcSlice = reinterpret_cast<const BYTE*>(srcData->pData) + srcData->SlicePitch * i;
+		for (UINT k = 0; k < numRows; ++k) {
+			memcpy(destSlice + dest->RowPitch * k, srcSlice + srcData->RowPitch * k, rowSizeInBytes);
+		}
+	}
+}
+
+
+inline UINT64 UpdateSubresources(_In_ ID3D12GraphicsCommandList *cmdList,
+							 	 _In_ ID3D12Resource *destinationResource,
+								 _In_ ID3D12Resource *sourceResource,
+								 _In_range_(0, D3D12_REQ_SUBRESOURCES) UINT firstSubresource,
+								 _In_range_(0, D3D12_REQ_SUBRESOURCES - firstSubresource) UINT numSubresources,
+								 UINT64 requiredSize,
+								 _In_reads_(numSubresources) const D3D12_PLACED_SUBRESOURCE_FOOTPRINT *layouts,
+								 _In_reads_(numSubresources) const UINT *numRows,
+								 _In_reads_(numSubresources) const UINT64 *rowSizesInBytes,
+								 _In_reads_(numSubresources) const D3D12_SUBRESOURCE_DATA *sourceData) {
+	D3D12_RESOURCE_DESC sourceDesc = sourceResource->GetDesc();
+	D3D12_RESOURCE_DESC destinDesc = destinationResource->GetDesc();
+	if (sourceDesc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER || sourceDesc.Width < requiredSize + layouts[0].Offset || requiredSize >(SIZE_T) - 1 ||
+		(destinDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER && (firstSubresource != 0 || numSubresources != 1))) {
+		return 0;
+	}
+	BYTE *data;
+	if (FAILED(sourceResource->Map(0, NULL, reinterpret_cast<void**>(&data))))
+		return 0;
+	for (UINT i = 0; i < numSubresources; ++i) {
+		if (rowSizesInBytes[i] >(SIZE_T)-1)
+			return 0;
+		D3D12_MEMCPY_DEST destData = { data + layouts[i].Offset, layouts[i].Footprint.RowPitch, layouts[i].Footprint.RowPitch * numRows[i] };
+		MemcpySubresource(&destData, &sourceData[i], (SIZE_T)rowSizesInBytes[i], numRows[i], layouts[i].Footprint.Depth);
+	}
+	sourceResource->Unmap(0, NULL);
+	if (destinDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) {
+		CD3DX12_BOX srcBox(UINT(layouts[0].Offset), UINT(layouts[0].Offset + layouts[0].Footprint.Width));
+		cmdList->CopyBufferRegion(destinationResource, 0, sourceResource, layouts[0].Offset, layouts[0].Footprint.Width);
+	}
+	else {
+		for (UINT i = 0; i < numSubresources; ++i) {
+			CD3DX12_TEXTURE_COPY_LOCATION Dst(destinationResource, i + firstSubresource);
+			CD3DX12_TEXTURE_COPY_LOCATION Src(sourceResource, layouts[i]);
+			cmdList->CopyTextureRegion(&Dst, 0, 0, 0, &Src, nullptr);
+		}
+	}
+	return requiredSize;
+}
+
+
+template <UINT MaxSubresources> inline UINT64 UpdateSubresources(_In_ ID3D12GraphicsCommandList *cmdList,
+																 _In_ ID3D12Resource *destinationResource,
+																 _In_ ID3D12Resource *sourceResource,
+																 UINT64 sourceOffset,
+																 _In_range_(0, MaxSubresources) UINT firstSubresource,
+																 _In_range_(1, MaxSubresources - firstSubresource) UINT numSubresources,
+																 _In_reads_(numSubresources) D3D12_SUBRESOURCE_DATA *sourceData) {
+	UINT64 requiredSize = 0;
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT layouts[MaxSubresources];
+	UINT numRows[MaxSubresources];
+	UINT64 rowSizesInBytes[MaxSubresources];
+
+	D3D12_RESOURCE_DESC desc = destinationResource->GetDesc();
+	ID3D12Device *device;
+	destinationResource->GetDevice(__uuidof(*device), reinterpret_cast<void**>(&device));
+	device->GetCopyableFootprints(&desc, firstSubresource, numSubresources, sourceOffset, layouts, numRows, rowSizesInBytes, &requiredSize);
+	device->Release();
+
+	return UpdateSubresources(cmdList, destinationResource, sourceResource, firstSubresource, numSubresources, requiredSize, layouts, numRows, rowSizesInBytes, sourceData);
+}
+
+
+//---------------------------------------------¬—œŒÃŒ√¿“≈À‹Õ€≈  À¿——€, —“–” “”–€-----------------------------------------------------------
+
+struct SubmeshGeometry
+{
+	UINT IndexCount = 0;
+	UINT StartIndexLocation = 0;
+	INT BaseVertexLocation = 0;
+
+	BoundingBox Bounds;
+};
+
+
+struct MeshGeometry
+{
+	std::string Name;
+	ComPtr<ID3DBlob> VertexBufferCPU = nullptr;
+	ComPtr<ID3DBlob> IndexBufferCPU = nullptr;
+	ComPtr<ID3D12Resource> VertexBufferGPU = nullptr;
+	ComPtr<ID3D12Resource> IndexBufferGPU = nullptr;
+	ComPtr<ID3D12Resource> VertexBufferUploader = nullptr;
+	ComPtr<ID3D12Resource> IndexBufferUploader = nullptr;
+
+	UINT VertexByteStride = 0;
+	UINT VertexBufferByteSize = 0;
+	DXGI_FORMAT IndexFormat = DXGI_FORMAT_R16_UINT;
+	UINT IndexBufferByteSize = 0;
+	std::unordered_map<std::string, SubmeshGeometry> DrawArgs;
+
+	D3D12_VERTEX_BUFFER_VIEW VertexBufferView() const {
+		D3D12_VERTEX_BUFFER_VIEW vb_view;
+		vb_view.BufferLocation = VertexBufferGPU->GetGPUVirtualAddress();
+		vb_view.StrideInBytes = VertexByteStride;
+		vb_view.SizeInBytes = VertexBufferByteSize;
+		return vb_view;
+	}
+
+	D3D12_INDEX_BUFFER_VIEW IndexBufferView() const {
+		D3D12_INDEX_BUFFER_VIEW ib_view;
+		ib_view.BufferLocation = IndexBufferGPU->GetGPUVirtualAddress();
+		ib_view.Format = IndexFormat;
+		ib_view.SizeInBytes = IndexBufferByteSize;
+		return ib_view;
+	}
+
+	void DisposeUploaders() {
+		VertexBufferUploader = nullptr;
+		IndexBufferUploader = nullptr;
+	}
+};
+
 
 class Util
 {
 public:
 	static ComPtr<ID3D12Resource> CreateDefaultBuffer(ID3D12Device *device, ID3D12GraphicsCommandList *cmdList, const void *initData, UINT64 byteSize, ComPtr<ID3D12Resource>&uploadBuffer);
+
+	static UINT CalcConstantBufferByteSize(UINT byteSize) { return (byteSize + 255) & ~255; }
 };
 
 
@@ -352,13 +475,7 @@ public:
 };
 
 
-inline std::wstring AnsiToWString(const std::string &str)
-{
-	WCHAR buffer[512];
-	MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, buffer, 512);
-	return std::wstring(buffer);
-}
-
+//---------------------------------------------------------- Ã¿ –Œ—€ ----------------------------------------------------------------------
 
 #ifndef ThrowIfFailed
 #define ThrowIfFailed(x)												\
@@ -379,6 +496,9 @@ inline std::wstring AnsiToWString(const std::string &str)
 	}								\
 }
 #endif
+
+
+//--------------------------------------------------¬—œŒÃŒ√¿“≈À‹Õ€≈ ‘”Õ ÷»»----------------------------------------------------------------
 
 inline std::wstring ToString(const DXGI_ADAPTER_DESC &desc, const std::wstring &extra = L"", bool prepend = false)
 {
@@ -404,4 +524,11 @@ inline std::wstring ToString(const DXGI_OUTPUT_DESC &desc, const std::wstring &e
 			description += L" " + extra + L"\n";
 	}
 	return description;
+}
+
+inline std::wstring AnsiToWString(const std::string &str)
+{
+	WCHAR buffer[512];
+	MultiByteToWideChar(CP_ACP, 0, str.c_str(), -1, buffer, 512);
+	return std::wstring(buffer);
 }

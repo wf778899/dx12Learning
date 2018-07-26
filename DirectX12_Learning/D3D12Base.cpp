@@ -72,15 +72,16 @@ LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 	case WM_LBUTTONDOWN:
 	case WM_MBUTTONDOWN:
 	case WM_RBUTTONDOWN:
-		//TODO: реализовать onMouseDown()
+		OnMouseDown(wParam, GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
 		return 0;
 	case WM_LBUTTONUP:
 	case WM_MBUTTONUP:
 	case WM_RBUTTONUP:
-		//TODO: реализовать onMouseUp()
+		OnMouseUp(wParam, GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
 		return 0;
 	case WM_MOUSEMOVE:
-		//TODO: реализовать onMouseMove()
+		OnMouseMove(wParam, GET_X_LPARAM(lparam), GET_Y_LPARAM(lparam));
+		return 0;
 	case WM_KEYUP:
 		if (wParam == VK_ESCAPE) {
 			PostQuitMessage(0);

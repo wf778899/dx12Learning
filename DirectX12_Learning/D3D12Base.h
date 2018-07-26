@@ -28,6 +28,11 @@ protected:
 	virtual void Update(const GameTimer &timer) = 0;
 	virtual void Draw(const GameTimer &timer) = 0;
 
+	virtual void OnMouseDown(WPARAM btnState, int x, int y) {}
+	virtual void OnMouseUp(WPARAM btnState, int x, int y) {}
+	virtual void OnMouseMove(WPARAM btnState, int x, int y) {}
+
+
 	bool InitMainWindow();
 	bool InitDirect3D();
 	void LogAdapters();
