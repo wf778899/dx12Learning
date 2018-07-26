@@ -30,8 +30,10 @@ private:
 
 	void BuildDescriptorHeaps();
 	void BuildConstantBuffers();
+	void BuildRootSignature();
 
 	ComPtr<ID3D12DescriptorHeap> m_CBV_heap = nullptr;
+	ComPtr<ID3D12RootSignature> m_rootSignature = nullptr;
 	std::unique_ptr<MeshGeometry> m_boxGeometry = nullptr;
 	std::unique_ptr<UploadBuffer<Constants>> m_constantBuffer = nullptr;
 

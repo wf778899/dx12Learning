@@ -293,8 +293,133 @@ struct CD3DX12_TEXTURE_COPY_LOCATION : public D3D12_TEXTURE_COPY_LOCATION
 
 struct CD3DX12_DESCRIPTOR_RANGE : public D3D12_DESCRIPTOR_RANGE
 {
+	CD3DX12_DESCRIPTOR_RANGE() {}
+	explicit CD3DX12_DESCRIPTOR_RANGE(const D3D12_DESCRIPTOR_RANGE &other) : D3D12_DESCRIPTOR_RANGE(other) {}
 
+	CD3DX12_DESCRIPTOR_RANGE(
+		D3D12_DESCRIPTOR_RANGE_TYPE rangeType,
+		UINT numDescriptors,
+		UINT baseShaderRegister,
+		UINT registerSpase = 0,
+		UINT offsetDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND)
+	{
+		Init(rangeType, numDescriptors, baseShaderRegister, registerSpase, offsetDescriptorsFromTableStart);
+	}
+	inline void Init(
+		D3D12_DESCRIPTOR_RANGE_TYPE rangeType,
+		UINT numDescriptors,
+		UINT baseShaderRegister,
+		UINT registerSpase = 0,
+		UINT offsetDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND)
+	{
+		Init(*this, rangeType, numDescriptors, baseShaderRegister, registerSpase, offsetDescriptorsFromTableStart);
+	}
+	static inline void Init(
+		_Out_ D3D12_DESCRIPTOR_RANGE &range,
+		D3D12_DESCRIPTOR_RANGE_TYPE rangeType,
+		UINT numDescriptors,
+		UINT baseShaderRegister,
+		UINT registerSpase = 0,
+		UINT offsetInDescriptorsFromTableStart = D3D12_DESCRIPTOR_RANGE_OFFSET_APPEND)
+	{
+		range.RangeType = rangeType;
+		range.NumDescriptors = numDescriptors;
+		range.BaseShaderRegister = baseShaderRegister;
+		range.RegisterSpace = registerSpase;
+		range.OffsetInDescriptorsFromTableStart = offsetInDescriptorsFromTableStart;
+	}
 };
+
+struct CD3DX12_ROOT_DESCRIPTOR_TABLE : public D3D12_ROOT_DESCRIPTOR_TABLE
+{
+	CD3DX12_ROOT_DESCRIPTOR_TABLE() {}
+	explicit CD3DX12_ROOT_DESCRIPTOR_TABLE(const D3D12_ROOT_DESCRIPTOR_TABLE &other) : D3D12_ROOT_DESCRIPTOR_TABLE(other) {}
+
+	CD3DX12_ROOT_DESCRIPTOR_TABLE(UINT numDescriptorRanges, _In_reads_opt_(numDescriptorRanges) const D3D12_DESCRIPTOR_RANGE *descriptorRanges)
+	{
+		Init(numDescriptorRanges, descriptorRanges);
+	}
+	inline void Init(UINT numDescriptorRanges, _In_reads_opt_(numDescriptorRanges) const D3D12_DESCRIPTOR_RANGE *descriptorRanges)
+	{
+		Init(*this, numDescriptorRanges, descriptorRanges);
+	}
+	static inline void Init(
+		_Out_ D3D12_ROOT_DESCRIPTOR_TABLE &rootDescriptorTable,
+		UINT numDescriptorRanges,
+		_In_reads_opt_(numDescriptorRanges) const D3D12_DESCRIPTOR_RANGE *descriptorRanges)
+	{
+		rootDescriptorTable.NumDescriptorRanges = numDescriptorRanges;
+		rootDescriptorTable.pDescriptorRanges = descriptorRanges;
+	}
+};
+
+struct CD3DX12_ROOT_PARAMETER : public D3D12_ROOT_PARAMETER
+{
+	CD3DX12_ROOT_PARAMETER() {}
+	explicit CD3DX12_ROOT_PARAMETER(const D3D12_ROOT_PARAMETER &other) : D3D12_ROOT_PARAMETER(other) {}
+
+	static inline void InitAsDescriptorTable(
+		_Out_ D3D12_ROOT_PARAMETER &rootParam,
+		UINT numDescriptorRanges,
+		_In_reads_(numDescriptorRanges) const D3D12_DESCRIPTOR_RANGE *descriptorRanges,
+		D3D12_SHADER_VISIBILITY visibility = D3D12_SHADER_VISIBILITY_ALL)
+	{
+		rootParam.ParameterType = D3D12_ROOT_PARAMETER_TYPE_DESCRIPTOR_TABLE;
+		rootParam.ShaderVisibility = visibility;
+		CD3DX12_ROOT_DESCRIPTOR_TABLE::Init(rootParam.DescriptorTable, numDescriptorRanges, descriptorRanges);
+	}
+	inline void InitAsDescriptorTable(
+		UINT numDescriptorRanges,
+		_In_reads_(numDescriptorRanges) const D3D12_DESCRIPTOR_RANGE *descriptorRanges,
+		D3D12_SHADER_VISIBILITY visibility = D3D12_SHADER_VISIBILITY_ALL)
+	{
+		InitAsDescriptorTable(*this, numDescriptorRanges, descriptorRanges, visibility);
+	}
+};
+
+struct CD3DX12_ROOT_SIGNATURE_DESC : public D3D12_ROOT_SIGNATURE_DESC
+{
+	CD3DX12_ROOT_SIGNATURE_DESC() {}
+	explicit CD3DX12_ROOT_SIGNATURE_DESC(const D3D12_ROOT_SIGNATURE_DESC &other) : D3D12_ROOT_SIGNATURE_DESC(other) {}
+
+	CD3DX12_ROOT_SIGNATURE_DESC(
+		UINT numParams,
+		_In_reads_opt_(numParams) const D3D12_ROOT_PARAMETER *parameters,
+		UINT numStaticSamplers = 0,
+		_In_reads_opt_(numStaticSamplers) const D3D12_STATIC_SAMPLER_DESC *staticSamplers = NULL,
+		D3D12_ROOT_SIGNATURE_FLAGS flags = D3D12_ROOT_SIGNATURE_FLAG_NONE)
+	{
+		Init(numParams, parameters, numStaticSamplers, staticSamplers, flags);
+	}
+	CD3DX12_ROOT_SIGNATURE_DESC(CD3DX12_DEFAULT)
+	{
+		Init(0, NULL, 0, NULL, D3D12_ROOT_SIGNATURE_FLAG_NONE);
+	}
+	inline void Init(
+		UINT numParams,
+		_In_reads_opt_(numParams) const D3D12_ROOT_PARAMETER *parameters,
+		UINT numStaticSamplers = 0,
+		_In_reads_opt_(numStaticSamplers) const D3D12_STATIC_SAMPLER_DESC *staticSamplers = NULL,
+		D3D12_ROOT_SIGNATURE_FLAGS flags = D3D12_ROOT_SIGNATURE_FLAG_NONE)
+	{
+		Init(*this, numParams, parameters, numStaticSamplers, staticSamplers, flags);
+	}
+	static inline void Init(
+		_Out_ D3D12_ROOT_SIGNATURE_DESC &desc,
+		UINT numParams,
+		_In_reads_opt_(numParams) const D3D12_ROOT_PARAMETER *parameters,
+		UINT numStaticSamplers = 0,
+		_In_reads_opt_(numStaticSamplers) const D3D12_STATIC_SAMPLER_DESC *staticSamplers = NULL,
+		D3D12_ROOT_SIGNATURE_FLAGS flags = D3D12_ROOT_SIGNATURE_FLAG_NONE)
+	{
+		desc.NumParameters = numParams;
+		desc.pParameters = parameters;
+		desc.NumStaticSamplers = numStaticSamplers;
+		desc.pStaticSamplers = staticSamplers;
+		desc.Flags = flags;
+	}
+};
+
 
 //--------------------------------------------------‘”Õ ÷»» ƒÀﬂ Œ¡Ã≈Õ¿ ƒ¿ÕÕ€Ã» — GPU-------------------------------------------------------
 

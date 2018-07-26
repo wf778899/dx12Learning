@@ -20,6 +20,7 @@ bool D3D12Engine::Initialize()
 	ThrowIfFailed(m_cmdList->Reset(m_cmdAllocator.Get(), nullptr));
 	BuildDescriptorHeaps();
 	BuildConstantBuffers();
+	BuildRootSignature();
 
 	ThrowIfFailed(m_cmdList->Close());
 	ID3D12CommandList *cmdLists[] = { m_cmdList.Get() };
@@ -115,4 +116,24 @@ void D3D12Engine::BuildConstantBuffers()
 	cbvDesc.SizeInBytes = cbElemByteSize;
 
 	m_device->CreateConstantBufferView(&cbvDesc, m_CBV_heap->GetCPUDescriptorHandleForHeapStart());
+}
+
+void D3D12Engine::BuildRootSignature()
+{
+	CD3DX12_ROOT_PARAMETER rootParameter[1];
+	CD3DX12_DESCRIPTOR_RANGE cbvTable;
+	cbvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+	rootParameter[0].InitAsDescriptorTable(1, &cbvTable);
+
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(1, rootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+
+	ComPtr<ID3DBlob> serializeRootSig = nullptr;
+	ComPtr<ID3DBlob> errorBlob = nullptr;
+
+	ThrowIfFailed(D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, serializeRootSig.GetAddressOf(), errorBlob.GetAddressOf()));
+
+	if (errorBlob != nullptr) {
+		::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
+	}
+	ThrowIfFailed(m_device->CreateRootSignature(0, serializeRootSig->GetBufferPointer(), serializeRootSig->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
 }
