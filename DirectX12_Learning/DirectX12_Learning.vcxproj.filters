@@ -19,6 +19,9 @@
     <Filter Include="Файлы заголовков\Helpers">
       <UniqueIdentifier>{6df55c59-f42b-4826-a78e-108a87bc642e}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Исходные файлы\Shaders">
+      <UniqueIdentifier>{ef1309b1-fd92-4b76-aea7-c3d465eb551c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -87,5 +90,13 @@
     <Image Include="DirectX12_Learning.ico">
       <Filter>Файлы ресурсов</Filter>
     </Image>
+  </ItemGroup>
+  <ItemGroup>
+    <FxCompile Include="Shaders\VertexShader.hlsl">
+      <Filter>Исходные файлы\Shaders</Filter>
+    </FxCompile>
+    <FxCompile Include="Shaders\PixelShader.hlsl">
+      <Filter>Исходные файлы\Shaders</Filter>
+    </FxCompile>
   </ItemGroup>
 </Project>

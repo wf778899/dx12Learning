@@ -32,3 +32,18 @@ ComPtr<ID3D12Resource> Util::CreateDefaultBuffer(ID3D12Device *device,
 
 	return defaultBuffer;
 }
+
+ComPtr<ID3DBlob> Util::LoadBinary(const std::wstring &fileName)
+{
+	std::ifstream fin(fileName, std::ios::binary);
+	fin.seekg(0, std::ios_base::end);
+	std::ifstream::pos_type size = (int)fin.tellg();
+	fin.seekg(0, std::ios_base::beg);
+
+	ComPtr<ID3D10Blob> blob;
+	ThrowIfFailed(D3DCreateBlob(size, blob.GetAddressOf()));
+
+	fin.read((char*)blob->GetBufferPointer(), size);
+	fin.close();
+	return blob;
+}
