@@ -4,6 +4,7 @@
 
 using Microsoft::WRL::ComPtr;
 using namespace DirectX;
+using namespace DirectX::PackedVector;
 
 UINT8 D3D12GetFormatPlaneCount(_In_ ID3D12Device *pDevice, DXGI_FORMAT format);
 UINT D3D12CalcSubresource(UINT MipSlice, UINT ArraySlice, UINT PlaneSlice, UINT MipLevels, UINT ArraySize);
@@ -11,6 +12,7 @@ UINT D3D12CalcSubresource(UINT MipSlice, UINT ArraySlice, UINT PlaneSlice, UINT 
 //------------------------------------------------------Œ¡®–“ » Œ“ MICROSOFT---------------------------------------------------------------
 
 struct CD3DX12_DEFAULT {};
+extern const DECLSPEC_SELECTANY CD3DX12_DEFAULT D3D12_DEFAULT;
 
 struct CD3DX12_CPU_DESCRIPTOR_HANDLE : public D3D12_CPU_DESCRIPTOR_HANDLE
 {
@@ -418,6 +420,133 @@ struct CD3DX12_ROOT_SIGNATURE_DESC : public D3D12_ROOT_SIGNATURE_DESC
 		desc.pStaticSamplers = staticSamplers;
 		desc.Flags = flags;
 	}
+};
+
+struct CD3DX12_RASTERIZER_DESC : public D3D12_RASTERIZER_DESC
+{
+	CD3DX12_RASTERIZER_DESC() {}
+	explicit CD3DX12_RASTERIZER_DESC(const D3D12_RASTERIZER_DESC &other) : D3D12_RASTERIZER_DESC(other) {}
+	explicit CD3DX12_RASTERIZER_DESC(CD3DX12_DEFAULT)
+	{
+		FillMode = D3D12_FILL_MODE_SOLID;
+		CullMode = D3D12_CULL_MODE_BACK;
+		FrontCounterClockwise = false;
+		DepthBias = D3D12_DEFAULT_DEPTH_BIAS;
+		DepthBiasClamp = D3D12_DEFAULT_DEPTH_BIAS_CLAMP;
+		SlopeScaledDepthBias = D3D12_DEFAULT_SLOPE_SCALED_DEPTH_BIAS;
+		DepthClipEnable = true;
+		MultisampleEnable = false;
+		AntialiasedLineEnable = false;
+		ForcedSampleCount = 0;
+		ConservativeRaster = D3D12_CONSERVATIVE_RASTERIZATION_MODE_OFF;
+	}
+	explicit CD3DX12_RASTERIZER_DESC(
+		D3D12_FILL_MODE fillMOde,
+		D3D12_CULL_MODE cullMode,
+		BOOL frontCounterClockwise,
+		INT depthBias,
+		FLOAT depthBiasClamp,
+		FLOAT slopeScaledDepthBias,
+		BOOL depthClipEnable,
+		BOOL multisampleEnable,
+		BOOL antialiasedLineEnable,
+		UINT forcedSampleCount,
+		D3D12_CONSERVATIVE_RASTERIZATION_MODE conservativeRaster)
+	{
+		FillMode = fillMOde;
+		CullMode = cullMode;
+		FrontCounterClockwise = frontCounterClockwise;
+		DepthBias = depthBias;
+		DepthBiasClamp = depthBiasClamp;
+		SlopeScaledDepthBias = slopeScaledDepthBias;
+		DepthClipEnable = depthClipEnable;
+		MultisampleEnable = multisampleEnable;
+		AntialiasedLineEnable = antialiasedLineEnable;
+		ForcedSampleCount = forcedSampleCount;
+		ConservativeRaster = conservativeRaster;
+	}
+	~CD3DX12_RASTERIZER_DESC() {}
+	operator const D3D12_RASTERIZER_DESC&() const { return *this; }
+};
+
+struct CD3XD12_BLEND_DESC : public D3D12_BLEND_DESC
+{
+	CD3XD12_BLEND_DESC() {}
+	explicit CD3XD12_BLEND_DESC(const D3D12_BLEND_DESC &other) : D3D12_BLEND_DESC(other) {}
+	explicit CD3XD12_BLEND_DESC(CD3DX12_DEFAULT)
+	{
+		AlphaToCoverageEnable = FALSE;
+		IndependentBlendEnable = FALSE;
+		const D3D12_RENDER_TARGET_BLEND_DESC defaultRenderTargetRenderDesc =
+		{
+			FALSE, FALSE,
+			D3D12_BLEND_ONE, D3D12_BLEND_ZERO, D3D12_BLEND_OP_ADD,
+			D3D12_BLEND_ONE, D3D12_BLEND_ZERO, D3D12_BLEND_OP_ADD,
+			D3D12_LOGIC_OP_NOOP,
+			D3D12_COLOR_WRITE_ENABLE_ALL
+		};
+		for (UINT i = 0; i < D3D12_SIMULTANEOUS_RENDER_TARGET_COUNT; ++i)
+			RenderTarget[i] = defaultRenderTargetRenderDesc;
+	}
+	~CD3XD12_BLEND_DESC() {}
+	operator const D3D12_BLEND_DESC&() const { return *this; }
+};
+
+struct CD3DX12_DEPTH_STENCIL_DESC : public D3D12_DEPTH_STENCIL_DESC
+{
+	CD3DX12_DEPTH_STENCIL_DESC() {}
+	explicit CD3DX12_DEPTH_STENCIL_DESC(const D3D12_DEPTH_STENCIL_DESC &other) : D3D12_DEPTH_STENCIL_DESC(other) {}
+	explicit CD3DX12_DEPTH_STENCIL_DESC(CD3DX12_DEFAULT)
+	{
+		DepthEnable = TRUE;
+		DepthWriteMask = D3D12_DEPTH_WRITE_MASK_ALL;
+		DepthFunc = D3D12_COMPARISON_FUNC_LESS;
+		StencilEnable = false;
+		StencilReadMask = D3D12_DEFAULT_STENCIL_READ_MASK;
+		StencilWriteMask = D3D12_DEFAULT_STENCIL_WRITE_MASK;
+		const D3D12_DEPTH_STENCILOP_DESC defaultStencilOp =
+		{
+			D3D12_STENCIL_OP_KEEP, 
+			D3D12_STENCIL_OP_KEEP, 
+			D3D12_STENCIL_OP_KEEP, 
+			D3D12_COMPARISON_FUNC_ALWAYS
+		};
+		FrontFace = defaultStencilOp;
+		BackFace = defaultStencilOp;
+	}
+	explicit CD3DX12_DEPTH_STENCIL_DESC(
+		BOOL depthEnable,
+		D3D12_DEPTH_WRITE_MASK depthWriteMask,
+		D3D12_COMPARISON_FUNC depthFunc,
+		BOOL stencilEnable,
+		UINT8 stencilReadMask,
+		UINT8 stencilWriteMask,
+		D3D12_STENCIL_OP frontStencilFailOp,
+		D3D12_STENCIL_OP frontStencilDepthFailOp,
+		D3D12_STENCIL_OP frontStencilPassOp,
+		D3D12_COMPARISON_FUNC frontStencilFunc,
+		D3D12_STENCIL_OP backStencilFailOp,
+		D3D12_STENCIL_OP backStencilDepthFailOp,
+		D3D12_STENCIL_OP backStencilPassOp,
+		D3D12_COMPARISON_FUNC backStencilFunc)
+	{
+		DepthEnable = depthEnable;
+		DepthWriteMask = depthWriteMask;
+		DepthFunc = depthFunc;
+		StencilEnable = stencilEnable;
+		StencilReadMask = stencilReadMask;
+		StencilWriteMask = stencilWriteMask;
+		FrontFace.StencilFailOp = frontStencilFailOp;
+		FrontFace.StencilDepthFailOp = frontStencilDepthFailOp;
+		FrontFace.StencilPassOp = frontStencilPassOp;
+		FrontFace.StencilFunc = frontStencilFunc;
+		BackFace.StencilFailOp = backStencilFailOp;
+		BackFace.StencilDepthFailOp = backStencilDepthFailOp;
+		BackFace.StencilPassOp = backStencilPassOp;
+		BackFace.StencilFunc = backStencilFunc;
+	}
+	~CD3DX12_DEPTH_STENCIL_DESC() {}
+	operator const D3D12_DEPTH_STENCIL_DESC&() const { return *this; }
 };
 
 
