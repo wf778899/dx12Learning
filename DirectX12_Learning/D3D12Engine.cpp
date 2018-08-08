@@ -34,29 +34,66 @@ bool D3D12Engine::Initialize()
 void D3D12Engine::OnResize()
 {
 	D3D12Base::OnResize();
+	XMMATRIX P = XMMatrixPerspectiveFovLH(0.25f * MathHelper::Pi, AspectRatio(), 1.0f, 1000.0f);
+	XMStoreFloat4x4(&m_proj, P);
 }
 
 void D3D12Engine::Update(const GameTimer & timer)
 {
+	float x = m_radius * sinf(m_phi) * cos(m_theta);
+	float z = m_radius * sinf(m_phi) * sin(m_theta);
+	float y = m_radius * cosf(m_phi);
+
+	XMVECTOR pos = XMVectorSet(x, y, z, 1.0f);
+	XMVECTOR target = XMVectorZero();
+	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+
+	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
+	XMStoreFloat4x4(&m_view, view);
+	XMMATRIX world = XMLoadFloat4x4(&m_world);
+	XMMATRIX proj = XMLoadFloat4x4(&m_proj);
+	XMMATRIX worldViewProj = world * view * proj;
+
+	Constants constants;
+	XMStoreFloat4x4(&constants.WorldViewProj, XMMatrixTranspose(worldViewProj));
+	m_constantBuffer->CopyData(0, constants);
 }
 
 void D3D12Engine::Draw(const GameTimer & timer)
 {
 	ThrowIfFailed(m_cmdAllocator->Reset());
-	ThrowIfFailed(m_cmdList->Reset(m_cmdAllocator.Get(), nullptr));
-	m_cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	ThrowIfFailed(m_cmdList->Reset(m_cmdAllocator.Get(), m_pipelineState.Get()));
+
 	m_cmdList->RSSetViewports(1, &m_viewPort);
 	m_cmdList->RSSetScissorRects(1, &m_scissorRect);
+	
+	m_cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+
 	m_cmdList->ClearRenderTargetView(CurrentBackBufferView(), DirectX::Colors::DarkViolet, 0, nullptr);
 	m_cmdList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
+
 	m_cmdList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+
+	ID3D12DescriptorHeap* descriptorHeaps[] = { m_CBV_heap.Get() };
+	m_cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
+
+	m_cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
+
+	m_cmdList->IASetVertexBuffers(0, 1, &m_boxGeometry->VertexBufferView());
+	m_cmdList->IASetIndexBuffer(&m_boxGeometry->IndexBufferView());
+	m_cmdList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+
+	m_cmdList->SetGraphicsRootDescriptorTable(0, m_CBV_heap->GetGPUDescriptorHandleForHeapStart());
+
+	m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["box"].IndexCount, 1, 0, 0, 0);
+
 	m_cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 	ThrowIfFailed(m_cmdList->Close());
 
 	ID3D12CommandList* cmdLists[] = { m_cmdList.Get() };
 	m_cmdQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);
-	ThrowIfFailed(m_swapChain->Present(0, 0));
 
+	ThrowIfFailed(m_swapChain->Present(0, 0));
 	m_currentBackBuffer = (m_currentBackBuffer + 1) % m_swapChainBuffersCount;
 
 	FlushCommandQueue();
@@ -98,8 +135,8 @@ void D3D12Engine::OnMouseMove(WPARAM btnState, int x, int y)
 void D3D12Engine::BuildDescriptorHeaps()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
-	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	cbvHeapDesc.NumDescriptors = 1;
+	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	cbvHeapDesc.NodeMask = 0;
 	ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_CBV_heap)));
@@ -115,7 +152,7 @@ void D3D12Engine::BuildConstantBuffers()
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
 	cbvDesc.BufferLocation = cbAddress;
-	cbvDesc.SizeInBytes = cbElemByteSize;
+	cbvDesc.SizeInBytes = Util::CalcConstantBufferByteSize(sizeof(Constants));;
 
 	m_device->CreateConstantBufferView(&cbvDesc, m_CBV_heap->GetCPUDescriptorHandleForHeapStart());
 }
@@ -145,6 +182,9 @@ void D3D12Engine::BuildShadersAndInputLayout()
 	HRESULT hr = S_OK;
 	m_vsByteCode = Util::LoadBinary(L"cso/VertexShader.cso");
 	m_psByteCode = Util::LoadBinary(L"cso/PixelShader.cso");
+	//m_vsByteCode = Util::CompileShader(L"Shaders\\color.hlsl", nullptr, "VS", "vs_5_0");
+	//m_psByteCode = Util::CompileShader(L"Shaders\\color.hlsl", nullptr, "PS", "ps_5_0");
+
 	m_inputLayout =
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
@@ -156,13 +196,18 @@ void D3D12Engine::BuildPSO()
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
 	ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
-	psoDesc.InputLayout.pInputElementDescs = m_inputLayout.data();
-	psoDesc.InputLayout.NumElements = (UINT)m_inputLayout.size();
+	psoDesc.InputLayout = { m_inputLayout.data(), (UINT)m_inputLayout.size() };
 	psoDesc.pRootSignature = m_rootSignature.Get();
-	psoDesc.VS.pShaderBytecode = reinterpret_cast<BYTE*>(m_vsByteCode->GetBufferPointer());
-	psoDesc.VS.BytecodeLength = m_vsByteCode->GetBufferSize();
-	psoDesc.PS.pShaderBytecode = reinterpret_cast<BYTE*>(m_psByteCode->GetBufferPointer());
-	psoDesc.PS.BytecodeLength = m_psByteCode->GetBufferSize();
+	psoDesc.VS = 
+	{ 
+		reinterpret_cast<BYTE*>(m_vsByteCode->GetBufferPointer()), 
+		m_vsByteCode->GetBufferSize() 
+	};
+	psoDesc.PS = 
+	{
+		reinterpret_cast<BYTE*>(m_psByteCode->GetBufferPointer()),
+		m_psByteCode->GetBufferSize()
+	};
 	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
 	psoDesc.BlendState = CD3XD12_BLEND_DESC(D3D12_DEFAULT);
 	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
@@ -189,7 +234,7 @@ void D3D12Engine::BuildBoxGeometry()
 		Vertex({ XMFLOAT3(+1.0f, +1.0f, +1.0f), XMFLOAT4(Colors::Cyan) }),
 		Vertex({ XMFLOAT3(+1.0f, -1.0f, +1.0f), XMFLOAT4(Colors::Magenta) })
 	};
-	std::array<UINT16, 36> indices =
+	std::array<std::uint16_t, 36> indices =
 	{
 		0, 1, 2, 0, 2, 3,	// Front
 		4, 6, 5, 4, 7, 6,	// Back
@@ -199,7 +244,7 @@ void D3D12Engine::BuildBoxGeometry()
 		4, 0, 3, 4, 3, 7	// Bottom
 	};
 	const UINT vByteSize = (UINT)vertices.size() * sizeof(Vertex);
-	const UINT iByteSize = (UINT)indices.size() * sizeof(UINT16);
+	const UINT iByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
 	m_boxGeometry = std::make_unique<MeshGeometry>();
 	m_boxGeometry->Name = "Box";

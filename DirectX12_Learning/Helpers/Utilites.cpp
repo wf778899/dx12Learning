@@ -47,3 +47,21 @@ ComPtr<ID3DBlob> Util::LoadBinary(const std::wstring &fileName)
 	fin.close();
 	return blob;
 }
+
+ComPtr<ID3DBlob> Util::CompileShader(const std::wstring &file, const D3D_SHADER_MACRO *defs, const std::string &entry, const std::string &target)
+{
+	UINT compileFlags = 0;
+
+#ifdef DEBUG
+	compileFlags = D3DCOMPILE_DEBUG | D3DCOMPILE_SKIP_OPTIMIZATION;
+#endif
+	HRESULT hr = S_OK;
+	ComPtr<ID3DBlob> byteCode = nullptr;
+	ComPtr<ID3DBlob> err;
+	hr = D3DCompileFromFile(file.c_str(), defs, D3D_COMPILE_STANDARD_FILE_INCLUDE, entry.c_str(), target.c_str(), compileFlags, 0, &byteCode, &err);
+	if (err != nullptr) {
+		OutputDebugStringA((char*)err->GetBufferPointer());
+		ThrowIfFailed(-1);
+	}
+	return byteCode;
+}

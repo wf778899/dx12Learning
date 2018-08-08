@@ -4,7 +4,7 @@ struct VertexIn
 	float4 Color : COLOR;
 };
 
-float4 PS(VertexIn vin) : SV_TARGET
+float4 PS(VertexIn pin) : SV_Target
 {
-	return vin.Color;
+	return pin.Color;
 }

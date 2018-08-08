@@ -702,6 +702,8 @@ public:
 	static UINT CalcConstantBufferByteSize(UINT byteSize) { return (byteSize + 255) & ~255; }
 
 	static ComPtr<ID3DBlob> LoadBinary(const std::wstring &fileName);
+
+	static ComPtr<ID3DBlob> CompileShader(const std::wstring &file, const D3D_SHADER_MACRO *defs, const std::string &entry, const std::string &target);
 };
 
 

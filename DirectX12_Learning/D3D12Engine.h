@@ -50,6 +50,10 @@ private:
 	std::unique_ptr<UploadBuffer<Constants>> m_constantBuffer = nullptr;
 	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputLayout;
 
+	XMFLOAT4X4 m_world = MathHelper::Identity4x4();
+	XMFLOAT4X4 m_view = MathHelper::Identity4x4();
+	XMFLOAT4X4 m_proj = MathHelper::Identity4x4();
+
 	POINT m_lastMousePos;
 	float m_theta = 1.5f * XM_PI;
 	float m_phi = XM_PIDIV4;

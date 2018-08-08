@@ -15,7 +15,7 @@
 //
 // Name                 Index   Mask Register SysValue  Format   Used
 // -------------------- ----- ------ -------- -------- ------- ------
-// SV_TARGET                0   xyzw        0   TARGET   float   xyzw
+// SV_Target                0   xyzw        0   TARGET   float   xyzw
 //
 ps_5_0
 dcl_globalFlags refactoringAllowed | skipOptimization
@@ -23,8 +23,8 @@ dcl_input_ps linear v1.xyzw
 dcl_output o0.xyzw
 //
 // Initial variable locations:
-//   v0.x <- vin.PosH.x; v0.y <- vin.PosH.y; v0.z <- vin.PosH.z; v0.w <- vin.PosH.w; 
-//   v1.x <- vin.Color.x; v1.y <- vin.Color.y; v1.z <- vin.Color.z; v1.w <- vin.Color.w; 
+//   v0.x <- pin.PosH.x; v0.y <- pin.PosH.y; v0.z <- pin.PosH.z; v0.w <- pin.PosH.w; 
+//   v1.x <- pin.Color.x; v1.y <- pin.Color.y; v1.z <- pin.Color.z; v1.w <- pin.Color.w; 
 //   o0.x <- <PS return value>.x; o0.y <- <PS return value>.y; o0.z <- <PS return value>.z; o0.w <- <PS return value>.w
 //
 #line 9 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\PixelShader.hlsl"

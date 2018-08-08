@@ -107,8 +107,8 @@ int D3D12Base::Run()
 			m_timer.Tick();
 			if (!m_appPaused) {
 				CalculateFrameStats();
+				Update(m_timer);
 				Draw(m_timer);
-				//TODO: реализовать Update()
 			} else {
 				Sleep(100);
 			}
