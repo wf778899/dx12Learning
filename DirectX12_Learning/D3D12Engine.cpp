@@ -50,13 +50,23 @@ void D3D12Engine::Update(const GameTimer & timer)
 
 	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
 	XMStoreFloat4x4(&m_view, view);
-	XMMATRIX world = XMLoadFloat4x4(&m_world);
+	XMMATRIX world = XMMatrixTranslation(-1.0f, -1.0f, -1.0f);
 	XMMATRIX proj = XMLoadFloat4x4(&m_proj);
 	XMMATRIX worldViewProj = world * view * proj;
 
+	// Заполняем элементы константного буфера константами для каждого объекта.
 	Constants constants;
 	XMStoreFloat4x4(&constants.WorldViewProj, XMMatrixTranspose(worldViewProj));
+	constants.gPulseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	constants.gTime = timer.TotalTime()*0;
 	m_constantBuffer->CopyData(0, constants);
+
+	world = XMMatrixTranslation(1.0f, -1.0f, -1.0f);
+	worldViewProj = world * view * proj;
+	XMStoreFloat4x4(&constants.WorldViewProj, XMMatrixTranspose(worldViewProj));
+	constants.gPulseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	constants.gTime = timer.TotalTime()*0;
+	m_constantBuffer->CopyData(1, constants);
 }
 
 void D3D12Engine::Draw(const GameTimer & timer)
@@ -66,7 +76,7 @@ void D3D12Engine::Draw(const GameTimer & timer)
 
 	m_cmdList->RSSetViewports(1, &m_viewPort);
 	m_cmdList->RSSetScissorRects(1, &m_scissorRect);
-	
+
 	m_cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
 	m_cmdList->ClearRenderTargetView(CurrentBackBufferView(), DirectX::Colors::DarkViolet, 0, nullptr);
@@ -74,18 +84,31 @@ void D3D12Engine::Draw(const GameTimer & timer)
 
 	m_cmdList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { m_CBV_heap.Get() };
+	ID3D12DescriptorHeap* descriptorHeaps[] = { m_CBV_heap.Get() };		// Сейчас в куче 2 дескриптора для куба и пирамиды
 	m_cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 
 	m_cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
 
-	m_cmdList->IASetVertexBuffers(0, 1, &m_boxGeometry->VertexBufferView());
+	m_cmdList->IASetVertexBuffers(0, 2, m_boxGeometry->VertexBufferViews());
+
 	m_cmdList->IASetIndexBuffer(&m_boxGeometry->IndexBufferView());
-	m_cmdList->IASetPrimitiveTopology(D3D10_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
+	m_cmdList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	m_cmdList->SetGraphicsRootDescriptorTable(0, m_CBV_heap->GetGPUDescriptorHandleForHeapStart());
+	// Получаем Handle для работы с кучей дескрипторов константного буфера (число дескрипторов = число элементов буфера). Сейчас он
+	// указывает на первый элемент буфера констант. Каждый раз при смене дескриптора нужно вызывать SetGraphicsRootDescriptorTable().
+	// Сами дескрипторы инициализируются (получают адрес/размер области буфера, на которую указывают) в BuildConstantBuffers().
+	// Константный буфер создаётся там же (просто выделяется место в памяти GPU), но элементы инитятся в Update().
+	CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_CBV_heap->GetGPUDescriptorHandleForHeapStart());
+	m_cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
 
-	m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["box"].IndexCount, 1, 0, 0, 0);
+	// Рисуем первый меш, используя первый дескриптор
+	m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["box"].IndexCount, 1, m_boxGeometry->DrawArgs["box"].StartIndexLocation, m_boxGeometry->DrawArgs["box"].BaseVertexLocation, 0);
+
+	// Получаем второй дескриптор из кучи, сдвигая Handle. Он указывает на второй элемент буфера констант. Рисуем второй меш, установив
+	// новый дескриптор (SetGraphicsRootDescriptorTable()).
+	cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize);
+	m_cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
+	m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["pyramide"].IndexCount, 1, m_boxGeometry->DrawArgs["pyramide"].StartIndexLocation, m_boxGeometry->DrawArgs["pyramide"].BaseVertexLocation, 0);
 
 	m_cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
 	ThrowIfFailed(m_cmdList->Close());
@@ -134,8 +157,9 @@ void D3D12Engine::OnMouseMove(WPARAM btnState, int x, int y)
 
 void D3D12Engine::BuildDescriptorHeaps()
 {
+	// Создаём кучу из 2 дескрипторов для константного буфера. Каждый дескриптор будет использован для отрисовки соотв. объекта сцены.
 	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
-	cbvHeapDesc.NumDescriptors = 1;
+	cbvHeapDesc.NumDescriptors = 2;
 	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	cbvHeapDesc.NodeMask = 0;
@@ -144,17 +168,25 @@ void D3D12Engine::BuildDescriptorHeaps()
 
 void D3D12Engine::BuildConstantBuffers()
 {
-	m_constantBuffer = std::make_unique<UploadBuffer<Constants>>(m_device.Get(), 1, true);
+	// Создаём буфер констант, состоящий из 2 элементов
+	m_constantBuffer = std::make_unique<UploadBuffer<Constants>>(m_device.Get(), 2, true);
 	const UINT cbElemByteSize = Util::CalcConstantBufferByteSize(sizeof(Constants));
 	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_constantBuffer->Resource()->GetGPUVirtualAddress();
-	int boxIndexCB = 0;
-	cbAddress += boxIndexCB * cbElemByteSize;
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
 	cbvDesc.BufferLocation = cbAddress;
-	cbvDesc.SizeInBytes = Util::CalcConstantBufferByteSize(sizeof(Constants));;
+	cbvDesc.SizeInBytes = cbElemByteSize;
 
-	m_device->CreateConstantBufferView(&cbvDesc, m_CBV_heap->GetCPUDescriptorHandleForHeapStart());
+	// Создаём Handle, указывающий на первый дескриптор кучи CBV. Обратить внимание - это "CPU"_DESCRIPTOR_HANDLE. С его помощью пишем в
+	// первый дескриптор инфу, на какую область ему указывать и какого она размера. Эта инфа берётся из D3D12_CONSTANT_BUFFER_VIEW_DESC.
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(m_CBV_heap->GetCPUDescriptorHandleForHeapStart());
+	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);
+
+	// Заполняем второй дескриптор. Для этого пишем в D3D12_CONSTANT_BUFFER_VIEW_DESC новый адрес, куда указывать, и получаем Handle на
+	// второй дескриптор в куче (просто сдвигая вперёд ранее полученный на размер дескриптора)
+	cbvDesc.BufferLocation += cbElemByteSize;
+	cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize);
+	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);
 }
 
 void D3D12Engine::BuildRootSignature()
@@ -182,13 +214,14 @@ void D3D12Engine::BuildShadersAndInputLayout()
 	HRESULT hr = S_OK;
 	m_vsByteCode = Util::LoadBinary(L"cso/VertexShader.cso");
 	m_psByteCode = Util::LoadBinary(L"cso/PixelShader.cso");
-	//m_vsByteCode = Util::CompileShader(L"Shaders\\color.hlsl", nullptr, "VS", "vs_5_0");
-	//m_psByteCode = Util::CompileShader(L"Shaders\\color.hlsl", nullptr, "PS", "ps_5_0");
 
 	m_inputLayout =
 	{
 		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "COLOR", 0, DXGI_FORMAT_R32G32B32A32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 }
+		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 },
+		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 },
+		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 1, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 },
+		{ "COLOR", 0, DXGI_FORMAT_B8G8R8A8_UNORM, 1, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 },
 	};
 }
 
@@ -223,50 +256,91 @@ void D3D12Engine::BuildPSO()
 
 void D3D12Engine::BuildBoxGeometry()
 {
-	std::array<Vertex, 8> vertices =
+	const UINT32 vertexNumber = 8;
+	std::array<SeparatedVertex, 13> verticesSplittedAttr =
 	{
-		Vertex({ XMFLOAT3(-1.0f, -1.0f, -1.0f), XMFLOAT4(Colors::White) }),
-		Vertex({ XMFLOAT3(-1.0f, +1.0f, -1.0f), XMFLOAT4(Colors::Black) }),
-		Vertex({ XMFLOAT3(+1.0f, +1.0f, -1.0f), XMFLOAT4(Colors::Red) }),
-		Vertex({ XMFLOAT3(+1.0f, -1.0f, -1.0f), XMFLOAT4(Colors::Green) }),
-		Vertex({ XMFLOAT3(-1.0f, -1.0f, +1.0f), XMFLOAT4(Colors::Blue) }),
-		Vertex({ XMFLOAT3(-1.0f, +1.0f, +1.0f), XMFLOAT4(Colors::Yellow) }),
-		Vertex({ XMFLOAT3(+1.0f, +1.0f, +1.0f), XMFLOAT4(Colors::Cyan) }),
-		Vertex({ XMFLOAT3(+1.0f, -1.0f, +1.0f), XMFLOAT4(Colors::Magenta) })
+		/*=========1 слот (позиция вершины, кордината текстуры)=========*/  /*================2 слот (вектор нормали, тангента, цвет)================*/
+		// Куб
+		SeparatedVertex({{XMFLOAT3(-1.0f,-1.0f,-1.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::White)}}),
+		SeparatedVertex({{XMFLOAT3(-1.0f,+1.0f,-1.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::Black)}}),
+		SeparatedVertex({{XMFLOAT3(+1.0f,+1.0f,-1.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::Red)}}),
+		SeparatedVertex({{XMFLOAT3(+1.0f,-1.0f,-1.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::Green)}}),
+		SeparatedVertex({{XMFLOAT3(-1.0f,-1.0f,+1.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::Blue)}}),
+		SeparatedVertex({{XMFLOAT3(-1.0f,+1.0f,+1.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::Yellow)}}),
+		SeparatedVertex({{XMFLOAT3(+1.0f,+1.0f,+1.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::Cyan)}}),
+		SeparatedVertex({{XMFLOAT3(+1.0f,-1.0f,+1.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::Magenta)}}),
+		// Пирамида
+		SeparatedVertex({{XMFLOAT3(-1.0f,-1.0f,-1.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::White)}}),
+		SeparatedVertex({{XMFLOAT3(+1.0f,-1.0f,-1.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::Black)}}),
+		SeparatedVertex({{XMFLOAT3(+1.0f,-1.0f,+1.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::Red)}}),
+		SeparatedVertex({{XMFLOAT3(-1.0f,-1.0f,+1.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::Green)}}),
+		SeparatedVertex({{XMFLOAT3( 0.0f,+2.0f, 0.0f),XMFLOAT2(0.0f,0.0f)}, {XMFLOAT3(0.0f,0.0f,0.0f),XMFLOAT3(0.0f,0.0f,0.0f),XMCOLOR(Colors::Blue)}}),
 	};
-	std::array<std::uint16_t, 36> indices =
+	std::array<std::uint16_t, 54> indices =
 	{
+		// Куб
 		0, 1, 2, 0, 2, 3,	// Front
 		4, 6, 5, 4, 7, 6,	// Back
 		4, 5, 1, 4, 1, 0,	// Left
 		3, 2, 6, 3, 6, 7,	// Right
 		1, 5, 6, 1, 6, 2,	// Top
-		4, 0, 3, 4, 3, 7	// Bottom
+		4, 0, 3, 4, 3, 7,	// Bottom
+		// Пирамида
+		1, 3, 0, 1, 2, 3,	// Bottom
+		0, 4, 1,			// Front
+		1, 4, 2,			// Right
+		2, 4, 3,			// Back
+		3, 4, 0				// Left
 	};
-	const UINT vByteSize = (UINT)vertices.size() * sizeof(Vertex);
+
+	std::array<SeparatedVertex::PosTex, 13> verticesPosTex;
+	std::array<SeparatedVertex::NorTanCol, 13> verticesNorTanCol;
+
+	for (int i = 0; i < verticesSplittedAttr.size(); ++i) {
+		verticesPosTex[i] = verticesSplittedAttr[i].pos_tex;
+		verticesNorTanCol[i] = verticesSplittedAttr[i].nor_tan_col;
+	}
+
 	const UINT iByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
-	m_boxGeometry = std::make_unique<MeshGeometry>();
+	m_boxGeometry = std::make_unique<MeshGeometry<2>>();
 	m_boxGeometry->Name = "Box";
 
-	ThrowIfFailed(D3DCreateBlob(vByteSize, &m_boxGeometry->VertexBufferCPU));
-	CopyMemory(m_boxGeometry->VertexBufferCPU->GetBufferPointer(), vertices.data(), vByteSize);
+	const UINT vByteSizeSlot1 = verticesPosTex.size() * sizeof(SeparatedVertex::PosTex);		// Размер буффера, подключаемого к слоту 1
+	const UINT vByteSizeSlot2 = verticesNorTanCol.size() * sizeof(SeparatedVertex::NorTanCol);	// Размер буффера, подключаемого к слоту 2
+
+	// Описываем буферы вершин (Stride, Size). Эти данные используются для генерации вьюх на буферы при подключении их к GPU-pipeline.
+	m_boxGeometry->vbMetrics[0].VertexBufferByteSize = vByteSizeSlot1;
+	m_boxGeometry->vbMetrics[0].VertexByteStride = sizeof(SeparatedVertex::PosTex);
+	m_boxGeometry->vbMetrics[1].VertexBufferByteSize = vByteSizeSlot2;
+	m_boxGeometry->vbMetrics[1].VertexByteStride = sizeof(SeparatedVertex::NorTanCol);
+
+	// Сохраняем буферы вершин в памяти на стороне CPU
+	ThrowIfFailed(D3DCreateBlob(vByteSizeSlot1, &m_boxGeometry->VBufferCPU[0]));
+	ThrowIfFailed(D3DCreateBlob(vByteSizeSlot2, &m_boxGeometry->VBufferCPU[1]));
+	CopyMemory(m_boxGeometry->VBufferCPU[0]->GetBufferPointer(), verticesPosTex.data(), vByteSizeSlot1);
+	CopyMemory(m_boxGeometry->VBufferCPU[1]->GetBufferPointer(), verticesNorTanCol.data(), vByteSizeSlot2);
 
 	ThrowIfFailed(D3DCreateBlob(iByteSize, &m_boxGeometry->IndexBufferCPU));
 	CopyMemory(m_boxGeometry->IndexBufferCPU->GetBufferPointer(), indices.data(), iByteSize);
 
-	m_boxGeometry->VertexBufferGPU = Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), vertices.data(), vByteSize, m_boxGeometry->VertexBufferUploader);
+	// Создаём в GPU буферы вершин (сколько слотов - столько буферов) и индексный буфер. Копируем туда данные из соответствующих массивов
+	m_boxGeometry->VBufferGPU[0] = Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), verticesPosTex.data(), vByteSizeSlot1, m_boxGeometry->VertexBufferUploader);
+	m_boxGeometry->VBufferGPU[1] = Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), verticesNorTanCol.data(), vByteSizeSlot2, m_boxGeometry->VertexBufferUploader);
 	m_boxGeometry->IndexBufferGPU = Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), indices.data(), iByteSize, m_boxGeometry->IndexBufferUploader);
 
-	m_boxGeometry->VertexByteStride = sizeof(Vertex);
-	m_boxGeometry->VertexBufferByteSize = vByteSize;
+	// Описываем буфер индексов. Эти данные используются для генерации вьюх на индексный буфер при подключении их к GPU-pipeline.
 	m_boxGeometry->IndexFormat = DXGI_FORMAT_R16_UINT;
 	m_boxGeometry->IndexBufferByteSize = iByteSize;
 
 	SubmeshGeometry submesh;
-	submesh.IndexCount = (UINT)indices.size();
+	submesh.IndexCount = 36;
 	submesh.StartIndexLocation = 0;
 	submesh.BaseVertexLocation = 0;
-
 	m_boxGeometry->DrawArgs["box"] = submesh;
+
+	submesh.IndexCount = 18;
+	submesh.StartIndexLocation = 36;
+	submesh.BaseVertexLocation = 8;
+	m_boxGeometry->DrawArgs["pyramide"] = submesh;
 }

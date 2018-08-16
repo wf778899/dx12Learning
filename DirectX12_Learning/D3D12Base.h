@@ -6,7 +6,7 @@
 class D3D12Base
 {
 public:
-	static D3D12Base* GetDirectXApplication();
+	static D3D12Base* GetDirectXApplication() { return m_directXApplication; }
 
 	HINSTANCE HInstance() const { return m_hInstance; }
 	HWND HWindow() const { return m_hWindow; }
@@ -23,7 +23,7 @@ public:
 protected:
 	D3D12Base(HINSTANCE hInstance);
 	virtual ~D3D12Base();
-	virtual void CreateDescriptorHeaps();
+	virtual void CreateRtvDsvDescriptorHeaps();
 	virtual void OnResize();
 	virtual void Update(const GameTimer &timer) = 0;
 	virtual void Draw(const GameTimer &timer) = 0;
@@ -67,6 +67,9 @@ protected:
 	ComPtr<ID3D12CommandQueue> m_cmdQueue;
 	ComPtr<ID3D12CommandAllocator> m_cmdAllocator;
 	ComPtr<ID3D12GraphicsCommandList> m_cmdList;
+
+	ComPtr<ID3D12GraphicsCommandList> m_cmdList2;
+
 	ComPtr<ID3D12DescriptorHeap> m_RTV_heap;
 	ComPtr<ID3D12DescriptorHeap> m_DSV_heap;
 	ComPtr<ID3D12Resource> m_swapChainBuffers[m_swapChainBuffersCount];
@@ -74,8 +77,8 @@ protected:
 
 	D3D12_VIEWPORT m_viewPort;
 	D3D12_RECT m_scissorRect;
-	DXGI_FORMAT m_backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;
-	DXGI_FORMAT m_DS_bufferFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;
+	DXGI_FORMAT m_backBufferFormat = DXGI_FORMAT_R8G8B8A8_UNORM;		// Формат заднего буфера (элемент = пиксель)
+	DXGI_FORMAT m_DS_bufferFormat = DXGI_FORMAT_D24_UNORM_S8_UINT;		// Формат буфера глубины (24 бита Depth, 8 бит Stencil)
 	UINT64 m_currentFence = 0;
 	UINT64 m_RTV_descriptorSize = 0;
 	UINT64 m_DSV_descriptrSize = 0;

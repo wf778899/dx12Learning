@@ -14,6 +14,48 @@ UINT D3D12CalcSubresource(UINT MipSlice, UINT ArraySlice, UINT PlaneSlice, UINT 
 struct CD3DX12_DEFAULT {};
 extern const DECLSPEC_SELECTANY CD3DX12_DEFAULT D3D12_DEFAULT;
 
+struct CD3DX12_GPU_DESCRIPTOR_HANDLE : public D3D12_GPU_DESCRIPTOR_HANDLE
+{
+	CD3DX12_GPU_DESCRIPTOR_HANDLE() {}
+	explicit CD3DX12_GPU_DESCRIPTOR_HANDLE(const D3D12_GPU_DESCRIPTOR_HANDLE &o) : D3D12_GPU_DESCRIPTOR_HANDLE(o) {}
+	CD3DX12_GPU_DESCRIPTOR_HANDLE(CD3DX12_DEFAULT) { ptr = 0; }
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE(_In_ const D3D12_GPU_DESCRIPTOR_HANDLE &other, INT offsetScaledByIncrementSize) {
+		InitOffsetted(other, offsetScaledByIncrementSize);
+	}
+	CD3DX12_GPU_DESCRIPTOR_HANDLE(_In_ const D3D12_GPU_DESCRIPTOR_HANDLE &other, INT offsetInDesriptors, UINT descriptorIncrementSize) {
+		InitOffsetted(other, offsetInDesriptors, descriptorIncrementSize);
+	}
+
+	CD3DX12_GPU_DESCRIPTOR_HANDLE& Offset(INT offsetScaledByIncrementSize) {
+		ptr += offsetScaledByIncrementSize;
+		return *this;
+	}
+	CD3DX12_GPU_DESCRIPTOR_HANDLE& Offset(INT offsetInDesriptors, UINT descriptorIncrementSize) {
+		ptr += offsetInDesriptors * descriptorIncrementSize;
+		return *this;
+	}
+	bool operator==(_In_  const D3D12_GPU_DESCRIPTOR_HANDLE &other) {
+		return (this->ptr == other.ptr);
+	}
+	bool operator !=(_In_  const D3D12_GPU_DESCRIPTOR_HANDLE &other) {
+		return (this->ptr != other.ptr);
+	}
+
+	inline void InitOffsetted(_In_ const D3D12_GPU_DESCRIPTOR_HANDLE &base, INT offsetScaledByIncrementSize) {
+		InitOffsetted(*this, base, offsetScaledByIncrementSize);
+	}
+	static inline void InitOffsetted(_Out_ D3D12_GPU_DESCRIPTOR_HANDLE &handle, _In_ const D3D12_GPU_DESCRIPTOR_HANDLE &base, INT offsetScaledByIncrementSize) {
+		handle.ptr = base.ptr + offsetScaledByIncrementSize;
+	}
+	inline void InitOffsetted(_In_ const D3D12_GPU_DESCRIPTOR_HANDLE &base, INT offsetInDesriptors, UINT descriptorIncrementSize) {
+		InitOffsetted(*this, base, offsetInDesriptors, descriptorIncrementSize);
+	}
+	static inline void InitOffsetted(_Out_ D3D12_GPU_DESCRIPTOR_HANDLE &handle, _In_ const D3D12_GPU_DESCRIPTOR_HANDLE &base, INT offsetInDesriptors, UINT descriptorIncrementSize) {
+		handle.ptr = base.ptr + offsetInDesriptors * descriptorIncrementSize;
+	}
+};
+
 struct CD3DX12_CPU_DESCRIPTOR_HANDLE : public D3D12_CPU_DESCRIPTOR_HANDLE
 {
 	CD3DX12_CPU_DESCRIPTOR_HANDLE() {}
@@ -650,33 +692,41 @@ struct SubmeshGeometry
 	UINT IndexCount = 0;
 	UINT StartIndexLocation = 0;
 	INT BaseVertexLocation = 0;
-
 	BoundingBox Bounds;
 };
 
-
-struct MeshGeometry
+template<UINT8 numSlots> struct MeshGeometry
 {
+	struct VBufferMetrics {
+		UINT VertexByteStride = 0;
+		UINT VertexBufferByteSize = 0;
+	};
+
 	std::string Name;
-	ComPtr<ID3DBlob> VertexBufferCPU = nullptr;
+	ComPtr<ID3DBlob> VBufferCPU[numSlots];				// Вершинные буферы, доступные CPU (для вычисления коллизий и т.п.)
 	ComPtr<ID3DBlob> IndexBufferCPU = nullptr;
-	ComPtr<ID3D12Resource> VertexBufferGPU = nullptr;
+	ComPtr<ID3D12Resource> VBufferGPU[numSlots];		// Вершинные буферы, доступные GPU (собственно для отрисовки)
 	ComPtr<ID3D12Resource> IndexBufferGPU = nullptr;
 	ComPtr<ID3D12Resource> VertexBufferUploader = nullptr;
 	ComPtr<ID3D12Resource> IndexBufferUploader = nullptr;
 
-	UINT VertexByteStride = 0;
-	UINT VertexBufferByteSize = 0;
+	VBufferMetrics vbMetrics[numSlots];					// Stride и Size соответствующего вершинного буфера
 	DXGI_FORMAT IndexFormat = DXGI_FORMAT_R16_UINT;
 	UINT IndexBufferByteSize = 0;
+
+	D3D12_VERTEX_BUFFER_VIEW VBufferViews[numSlots];	// Вьюхи вершинных буферов (подключаются в Draw() методом IASetVertexBuffers)
+	bool viewInited = false;
 	std::unordered_map<std::string, SubmeshGeometry> DrawArgs;
 
-	D3D12_VERTEX_BUFFER_VIEW VertexBufferView() const {
-		D3D12_VERTEX_BUFFER_VIEW vb_view;
-		vb_view.BufferLocation = VertexBufferGPU->GetGPUVirtualAddress();
-		vb_view.StrideInBytes = VertexByteStride;
-		vb_view.SizeInBytes = VertexBufferByteSize;
-		return vb_view;
+	D3D12_VERTEX_BUFFER_VIEW* VertexBufferViews() {
+		if (!viewInited) {
+			for (UINT8 i = 0; i < numSlots; ++i) {
+				VBufferViews[i].BufferLocation = VBufferGPU[i]->GetGPUVirtualAddress();
+				VBufferViews[i].StrideInBytes = vbMetrics[i].VertexByteStride;
+				VBufferViews[i].SizeInBytes = vbMetrics[i].VertexBufferByteSize;
+			}
+		}
+		return VBufferViews;
 	}
 
 	D3D12_INDEX_BUFFER_VIEW IndexBufferView() const {

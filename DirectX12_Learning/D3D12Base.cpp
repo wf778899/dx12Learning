@@ -121,27 +121,24 @@ int D3D12Base::Run()
 D3D12Base* D3D12Base::m_directXApplication = nullptr;
 
 
-D3D12Base* D3D12Base::GetDirectXApplication()
-{
-	return m_directXApplication;
-}
-
-
+//! ========================================================  Общая  инициализация  =======================================================
+/*
+   Сначала создаёт окно, в которое будем рисовать, потом инициализирует Direct3D, в конце обязательно вызывает OnResize() - там он в первый
+раз задаёт DepthStencil буферу и буферам SwapChain'a требуемые размеры, создаёт на них вьюхи, задаёт размеры Viewport'a и ScissorRect'a. */
 bool D3D12Base::Initialize()
 {	
 	if (!InitMainWindow())
 		return false;
 	if (!InitDirect3D())
 		return false;
-
 	OnResize();
-
 	return true;
 }
 
 
-
-
+//! ============================================================  Конструктор  ============================================================
+/* 
+   Синглтон, при попытке создать второй объект D3D12Base выпадает в assert.																 */
 D3D12Base::D3D12Base(HINSTANCE hInstance)
 	: m_hInstance(hInstance)
 {
@@ -150,15 +147,21 @@ D3D12Base::D3D12Base(HINSTANCE hInstance)
 }
 
 
+//! ======================================================  Инициализация  Direct3D  ======================================================
+/*
+   Создание и инициализация основных объектов для работы DirectX-приложения:  создание фабрики, девайса, Fence,  настройка мультисэмплинга,
+объекты для работы с командами (очередь команд, список команд, аллокатор), цепь связи, кучи дескрипторов (RTV, DCV, CBV).				 */
 bool D3D12Base::InitDirect3D()
 {
 #if defined(DEBUG)
 {
+	/* Включаем вывод отладочной информации																					  (стр. 187) */
 	ComPtr<ID3D12Debug> debugController;
 	ThrowIfFailed(D3D12GetDebugInterface(IID_PPV_ARGS(&debugController)));
 	debugController->EnableDebugLayer();
 }
 #endif
+	/* Создаём   IDXGIFactory4  - с её помощью можно перечислять адаптеры и т.п. А ещё создать SwapChain.					  (стр. 187) */
 	ThrowIfFailed(CreateDXGIFactory1(IID_PPV_ARGS(&m_factory4)));
 	ComPtr<IDXGIAdapter> adapter = nullptr;
 
@@ -169,6 +172,8 @@ bool D3D12Base::InitDirect3D()
 	HRESULT hr = S_FALSE;
 	DXGI_ADAPTER_DESC desc = { 0 };
 
+	/* Перечисляем адаптеры. С каждым из них пытаемся создать девайс.  При  первой  успешной  попытке  заканчиваем  перечисление. Если с */
+	/* хардовым адаптером не получилось - по-любому получится с эмулятором Microsoft Basic Render Driver.					  (стр. 188) */
 	for (int i = 0; m_factory4->EnumAdapters(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i) {
 		adapter->GetDesc(&desc);
 		hr = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device));
@@ -183,11 +188,15 @@ bool D3D12Base::InitDirect3D()
 		return false;
 	}
 
+	/* Создаём   ID3D12Fence   - с её помощью можно  синхронизировать  выполнение  списка  команд  на GPU  с работой  CPU. Также  узнаём */
+	/* размеры дескрипторов всех типов. Т.к. они лежат в куче, и известен только адрес первого дескриптора, то  для  обращения к ним  по */
+	/* порядковому номеру или абсолютному смещению нужно знать их размер, варьирующийся от железа к железу.				      (стр. 181) */
 	ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
 	m_RTV_descriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	m_DSV_descriptrSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
 	m_CBV_SRV_UAV_descriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV);
 
+	/* Запрос   NumQualityLevels   для заданного формата заднего буфера ( m_backBufferFormat ) и количества выборок ( 4 ). 	  (стр. 173) */
 	D3D12_FEATURE_DATA_MULTISAMPLE_QUALITY_LEVELS msQualityLevels;
 	msQualityLevels.Format = m_backBufferFormat;
 	msQualityLevels.SampleCount = 4;
@@ -198,13 +207,17 @@ bool D3D12Base::InitDirect3D()
 	m_msQualityLevels = msQualityLevels.NumQualityLevels;
 	assert(m_msQualityLevels > 0 && "Unexpected MSAA quality level.");
 
-	CreateCommandObjects();
-	CreateSwapChain();
-	CreateDescriptorHeaps();
+	CreateCommandObjects();		//	Создание объектов  для работы с командами
+	CreateSwapChain();			//	Создание цепи связи
+	CreateRtvDsvDescriptorHeaps();	//	Создание куч дескрипторов
 
 	return true;
 }
 
+
+//! ==================================================   Инициализация окна приложения   ==================================================
+/*
+																																		 */
 bool D3D12Base::InitMainWindow()
 {
 	WNDCLASS wc;
@@ -229,8 +242,8 @@ bool D3D12Base::InitMainWindow()
 	int width = rect.right - rect.left;
 	int height = rect.bottom - rect.top;
 
-	m_hWindow = CreateWindow(L"MainWindow", m_mainWindowTitle.c_str(), WS_OVERLAPPEDWINDOW,
-		CW_USEDEFAULT, CW_USEDEFAULT, width, height, 0, 0, m_hInstance, 0);
+	m_hWindow = CreateWindow(
+		L"MainWindow", m_mainWindowTitle.c_str(), WS_OVERLAPPEDWINDOW, CW_USEDEFAULT, CW_USEDEFAULT, width, height, 0, 0, m_hInstance, 0);
 
 	if (!m_hWindow) {
 		MessageBox(0, L"Create window failed.", 0, 0);
@@ -290,17 +303,34 @@ void D3D12Base::LogOutputDisplayModes(IDXGIOutput *output)
 	}
 }
 
+
+//! ============================================   Создание объектов  для работы с командами   ============================================
+/*
+   Команды в GPU даются в виде списков, размещающихся  в очереди  команд. С объектом  списка связана  область памяти, в которую пишется тот
+или иной набор команд. И вот таких наборов может быть много, все они ставятся в очередь и постепенно выполняются GPU. Очередь  представлена
+ID3D12CommandQueue,  с  помощью метода  ExecuteCommandLists( число списков, массив списков )  она  добавляет  списки команд  в  очередь  на
+выполнение. Список команд представлен базовым  ID3D12CommandList,  он наследуется, н-р,  ID3D12GraphicsCommandList. Тот или иной тип списка
+позволяет добавлять определённые команды в список. Эти команды размещаются в памяти с помощью связанного  со  списком  аллокатора,  который
+представлен ID3D12CommandAllocator. После добавления команд в список его надо закрыть методом  Close(). В этот момент команды размещаются в
+памяти, выделяемой аллокатором. После закрытия (завершения записи команд) список м.б. добавлен в очередь (ExecuteCommandLists()).  Записать
+в него ещё какие-то команды уже нельзя. После закрытия списка можно повторить с ним работу уже только  с чистого листа,  вызвав  его  метод
+Reset( аллокатор, стэйт конвейера ). Аллокатор при этом можно использовать старый, но его надо тоже ресетнуть Reset().  (стр. 176 - 181) */
 void D3D12Base::CreateCommandObjects()
 {
 	D3D12_COMMAND_QUEUE_DESC cmdQueueDesc = {};
 	cmdQueueDesc.Type = D3D12_COMMAND_LIST_TYPE_DIRECT;
 	cmdQueueDesc.Flags = D3D12_COMMAND_QUEUE_FLAG_NONE;
 	ThrowIfFailed(m_device->CreateCommandQueue(&cmdQueueDesc, IID_PPV_ARGS(&m_cmdQueue)));
-	ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(m_cmdAllocator.GetAddressOf())));
-	ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_cmdAllocator.Get(), nullptr, IID_PPV_ARGS(m_cmdList.GetAddressOf())));
+	ThrowIfFailed(m_device->CreateCommandAllocator(D3D12_COMMAND_LIST_TYPE_DIRECT, IID_PPV_ARGS(&m_cmdAllocator)));
+	ThrowIfFailed(m_device->CreateCommandList(0, D3D12_COMMAND_LIST_TYPE_DIRECT, m_cmdAllocator.Get(), nullptr, IID_PPV_ARGS(&m_cmdList)));
 	m_cmdList->Close();
 }
 
+
+//! =======================================================   Создание цепи связи   =======================================================
+/*
+   SwapChain отвечает за создание и использование back-буферов. Они должны точно соответствовать окну, в которое  происходит  отрисовка, по
+   размерам и формату. Она же задаёт частоту перемены буферов, параметры семплирования.							   (стр. 157, 192 - 195) */
 void D3D12Base::CreateSwapChain()
 {
 	m_swapChain.Reset();
@@ -325,7 +355,17 @@ void D3D12Base::CreateSwapChain()
 	ThrowIfFailed(m_factory4->CreateSwapChain(m_cmdQueue.Get(), &sd, m_swapChain.GetAddressOf()));
 }
 
-void D3D12Base::CreateDescriptorHeaps()
+
+//! ===============================================   Создание куч дескрипторов RTV и DSV   ===============================================
+/*
+   В кучах дескрипторов живут дескрипторы (внезапно). С их помощью различные этапы конвейера GPU обращаются к ресурсам, буферам, текстурам.
+RTV-дескриптор указывает на буфер, в который попадают результаты рендеринга. Им может быть, например, back-буфер из SwapChain'a.  Поскольку
+в данном случае у нас 2 буфера в SwapChain, то для каждого из них нужно создать дескриптор. В OnResize() этим дескрипторам  будет  сказано,
+указывать на back-буферы SwapChain'a, а в Draw() через них вывод рендеринга будет направляться в back-буферы, каждый раз - в  другой буфер.
+DSV-дескриптор указывает на бувер теста глубины и трафарета. Этт буфер создаётся далее, в OnResize(). Дескриптор используется  для  доступа
+Output Merger'a к буферу глубин (как RTV - к буферу отрисовки). 
+*/
+void D3D12Base::CreateRtvDsvDescriptorHeaps()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC RTV_heap_desc;
 	RTV_heap_desc.NumDescriptors = m_swapChainBuffersCount;
