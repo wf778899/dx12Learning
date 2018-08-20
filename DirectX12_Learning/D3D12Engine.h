@@ -54,7 +54,7 @@ private:
 	virtual void OnMouseUp(WPARAM btnState, int x, int y);
 	virtual void OnMouseMove(WPARAM btnState, int x, int y);
 
-	void BuildDescriptorHeaps();
+	void CreateCbvDescriptorHeaps();
 	void BuildConstantBuffers();
 	void BuildRootSignature();
 	void BuildShadersAndInputLayout();
@@ -68,6 +68,8 @@ private:
 	ComPtr<ID3DBlob> m_psByteCode = nullptr;
 	std::unique_ptr<MeshGeometry<2>> m_boxGeometry = nullptr;
 	std::unique_ptr<UploadBuffer<Constants>> m_constantBuffer = nullptr;
+	std::unique_ptr<UploadBuffer<float>> m_constantBuffer2 = nullptr;/////////////
+
 	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputLayout;
 
 	XMFLOAT4X4 m_world = MathHelper::Identity4x4();

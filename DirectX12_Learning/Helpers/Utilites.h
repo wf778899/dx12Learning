@@ -14,6 +14,12 @@ UINT D3D12CalcSubresource(UINT MipSlice, UINT ArraySlice, UINT PlaneSlice, UINT 
 struct CD3DX12_DEFAULT {};
 extern const DECLSPEC_SELECTANY CD3DX12_DEFAULT D3D12_DEFAULT;
 
+//! ===============================================   Хандлер D3D12_GPU_DESCRIPTOR_HANDLE   ===============================================
+/*
+   Предоставляет удобный интерфейс для использования дескриптора. Инициализируется обычно первым (верхним) дескриптором  кучи, возвращаемым
+методом кучи   GetGPUDescriptorHandleForHeapStart().   При этом можно указывать либо абсолютный оффсет, либо размер дескриптора и их число.
+Тогда хандлер будет возвращать соответствующий дескриптор относительно базового. Также хандлер можно  сдвигать  после  создания,  используя
+такой же механизм смещений. */
 struct CD3DX12_GPU_DESCRIPTOR_HANDLE : public D3D12_GPU_DESCRIPTOR_HANDLE
 {
 	CD3DX12_GPU_DESCRIPTOR_HANDLE() {}
@@ -56,6 +62,13 @@ struct CD3DX12_GPU_DESCRIPTOR_HANDLE : public D3D12_GPU_DESCRIPTOR_HANDLE
 	}
 };
 
+
+//! ===============================================   Хандлер D3D12_CPU_DESCRIPTOR_HANDLE   ===============================================
+/*
+Предоставляет удобный интерфейс для использования дескриптора. Инициализируется обычно первым (верхним) дескриптором  кучи, возвращаемым
+методом кучи   GetCPUDescriptorHandleForHeapStart().   При этом можно указывать либо абсолютный оффсет, либо размер дескриптора и их число.
+Тогда хандлер будет возвращать соответствующий дескриптор относительно базового. Также хандлер можно  сдвигать  после  создания,  используя
+такой же механизм смещений.																												 */
 struct CD3DX12_CPU_DESCRIPTOR_HANDLE : public D3D12_CPU_DESCRIPTOR_HANDLE
 {
 	CD3DX12_CPU_DESCRIPTOR_HANDLE() {}
@@ -98,16 +111,22 @@ struct CD3DX12_CPU_DESCRIPTOR_HANDLE : public D3D12_CPU_DESCRIPTOR_HANDLE
 	}
 };
 
+
+//! ===============================================   Обёртка над  D3D12_RESOURCE_BARRIER   ===============================================
+/*
+   С помощью статических методов создаёт объекты D3D12_RESOURCE_BARRIER, описывающие либо Transition ресурса, либо  Aliasing, либо UAV.  */
 struct CD3DX12_RESOURCE_BARRIER : public D3D12_RESOURCE_BARRIER
 {
 	CD3DX12_RESOURCE_BARRIER() {}
 	explicit CD3DX12_RESOURCE_BARRIER(const D3D12_RESOURCE_BARRIER &o) : D3D12_RESOURCE_BARRIER(o) {}
 
-	static inline CD3DX12_RESOURCE_BARRIER Transition(_In_ ID3D12Resource *resource,
+	static inline CD3DX12_RESOURCE_BARRIER Transition(
+		_In_ ID3D12Resource *resource,
 		D3D12_RESOURCE_STATES stateBefore,
 		D3D12_RESOURCE_STATES stateAfter,
 		UINT subresource = D3D12_RESOURCE_BARRIER_ALL_SUBRESOURCES,
-		D3D12_RESOURCE_BARRIER_FLAGS flags = D3D12_RESOURCE_BARRIER_FLAG_NONE) {
+		D3D12_RESOURCE_BARRIER_FLAGS flags = D3D12_RESOURCE_BARRIER_FLAG_NONE) 
+	{
 		CD3DX12_RESOURCE_BARRIER result;
 		ZeroMemory(&result, sizeof(result));
 		D3D12_RESOURCE_BARRIER &barrier = result;
@@ -120,7 +139,8 @@ struct CD3DX12_RESOURCE_BARRIER : public D3D12_RESOURCE_BARRIER
 		return result;
 	}
 
-	static inline CD3DX12_RESOURCE_BARRIER Aliasing(_In_ ID3D12Resource *resourceBefore, _In_ ID3D12Resource *resourceAfter) {
+	static inline CD3DX12_RESOURCE_BARRIER Aliasing(_In_ ID3D12Resource *resourceBefore, _In_ ID3D12Resource *resourceAfter)
+	{
 		CD3DX12_RESOURCE_BARRIER result;
 		ZeroMemory(&result, sizeof(result));
 		D3D12_RESOURCE_BARRIER &barrier = result;
@@ -130,7 +150,8 @@ struct CD3DX12_RESOURCE_BARRIER : public D3D12_RESOURCE_BARRIER
 		return result;
 	}
 
-	static inline CD3DX12_RESOURCE_BARRIER UAV(_In_ ID3D12Resource *resource) {
+	static inline CD3DX12_RESOURCE_BARRIER UAV(_In_ ID3D12Resource *resource)
+	{
 		CD3DX12_RESOURCE_BARRIER result;
 		ZeroMemory(&result, sizeof(result));
 		D3D12_RESOURCE_BARRIER &barrier = result;
@@ -140,6 +161,10 @@ struct CD3DX12_RESOURCE_BARRIER : public D3D12_RESOURCE_BARRIER
 	}
 };
 
+
+//! ================================================   Обёртка над D3D12_HEAP_PROPERTIES   ================================================
+/*
+   Просто удобная обёртка над D3D12_HEAP_PROPERTIES, добавляющая параметризованные конструкторы и операторы сравнения					 */
 struct CD3DX12_HEAP_PROPERTIES : public D3D12_HEAP_PROPERTIES
 {
 	CD3DX12_HEAP_PROPERTIES() {}
@@ -782,6 +807,8 @@ public:
 	int lineNumber = -1;
 };
 
+
+#define SC_ALLOW_MODE_SWITCH DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH
 
 //---------------------------------------------------------- МАКРОСЫ ----------------------------------------------------------------------
 

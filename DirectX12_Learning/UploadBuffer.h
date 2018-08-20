@@ -36,6 +36,7 @@ public:
 		memcpy(&m_mappedData[elementIndex * m_elementByteSize], &data, sizeof(T));
 	}
 
+	UINT elementByteSize() const { return m_elementByteSize; }
 private:
 	UINT m_elementByteSize = 0;
 	bool m_isConstantBuffer = false;
