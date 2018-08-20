@@ -11,35 +11,36 @@ public:
 	HINSTANCE HInstance() const { return m_hInstance; }
 	HWND HWindow() const { return m_hWindow; }
 	float AspectRatio() const { return static_cast<float>(m_windowWidth) / m_windowHeight; }
+
 	bool MultisamplingEnabled() const { return m_multisamplingEnabled; }
+	void EnableMultisampling() { m_multisamplingEnabled = true; CreateSwapChain(); OnResize(); }
+	void DisableMultisampling() { m_multisamplingEnabled = false; CreateSwapChain(); OnResize(); }
 
-	void EnableMultisampling() { m_multisamplingEnabled = true; }
-	void DisableMultisampling() { m_multisamplingEnabled = false; }
-
-	virtual LRESULT MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam);
 	virtual bool Initialize();
+	virtual LRESULT MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam);
+
 	int Run();
 
 protected:
 	D3D12Base(HINSTANCE hInstance);
 	virtual ~D3D12Base();
+
 	virtual void CreateRtvDsvDescriptorHeaps();
 	virtual void OnResize();
 	virtual void Update(const GameTimer &timer) = 0;
 	virtual void Draw(const GameTimer &timer) = 0;
-
 	virtual void OnMouseDown(WPARAM btnState, int x, int y) {}
 	virtual void OnMouseUp(WPARAM btnState, int x, int y) {}
 	virtual void OnMouseMove(WPARAM btnState, int x, int y) {}
 
-
 	bool InitMainWindow();
 	bool InitDirect3D();
+
+	void CreateCommandObjects();
+	void CreateSwapChain();
 	void LogAdapters();
 	void LogAdapterOutputs(IDXGIAdapter1 *adapter1);
 	void LogOutputDisplayModes(IDXGIOutput *output);
-	void CreateCommandObjects();
-	void CreateSwapChain();
 	void FlushCommandQueue();
 	void CalculateFrameStats();
 
@@ -67,13 +68,10 @@ protected:
 	ComPtr<ID3D12CommandQueue> m_cmdQueue;
 	ComPtr<ID3D12CommandAllocator> m_cmdAllocator;
 	ComPtr<ID3D12GraphicsCommandList> m_cmdList;
-
-	ComPtr<ID3D12GraphicsCommandList> m_cmdList2;
-
 	ComPtr<ID3D12DescriptorHeap> m_RTV_heap;
 	ComPtr<ID3D12DescriptorHeap> m_DSV_heap;
-	ComPtr<ID3D12Resource> m_swapChainBuffers[m_swapChainBuffersCount];
-	ComPtr<ID3D12Resource> m_depthStencilBuffer;
+	ComPtr<ID3D12Resource> m_swapChainBuffers[m_swapChainBuffersCount];	// Массив Com-указателей на back-буферы
+	ComPtr<ID3D12Resource> m_depthStencilBuffer;						// Com-указатель на буфер глубин/трафарета
 
 	D3D12_VIEWPORT m_viewPort;
 	D3D12_RECT m_scissorRect;
@@ -83,8 +81,8 @@ protected:
 	UINT64 m_RTV_descriptorSize = 0;
 	UINT64 m_DSV_descriptrSize = 0;
 	UINT64 m_CBV_SRV_UAV_descriptorSize = 0;
-	UINT32 m_windowWidth = 800;
-	UINT32 m_windowHeight = 600;
+	INT32 m_windowWidth = 800;
+	INT32 m_windowHeight = 600;
 	UINT8 m_msQualityLevels = 0;
 	UINT8 m_currentBackBuffer = 0;
 

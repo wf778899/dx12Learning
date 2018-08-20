@@ -1,15 +1,25 @@
 #include "stdafx.h"
 #include "D3D12Base.h"
 
+D3D12Base* D3D12Base::m_directXApplication = nullptr;	// Инстанс синглтона приложения.
+
+
+//! ===================================================  Call-back  для окна приложения  ==================================================
+/*
+   Здесь вызывается обработчик событий. Будучи виртуальным его можно дополнять в наследниках.											 */
 LRESULT CALLBACK MainWindowProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 {
 	return D3D12Base::GetDirectXApplication()->MsgProc(hWindow, msg, wParam, lparam);
 }
 
 
+//! =====================================================  Обработка событий  Windows  ====================================================
+/*
+																																		 */
 LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 {
 	switch (msg) {
+	/* WM_ACTIVATE приходит, когда окно становится активным/неактивным. При этом приложение запускается/приостанавливается соответств.   */
 	case WM_ACTIVATE:
 		if (LOWORD(wParam) == WA_INACTIVE) {
 			m_appPaused = true;
@@ -19,7 +29,9 @@ LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 			m_timer.Start();
 		}
 		return 0;
+	/* WM_SIZE приходит, когда юзер меняет размеры окна. */
 	case WM_SIZE:
+		/* Сохраняем новые размеры. */
 		m_windowWidth = LOWORD(lparam);
 		m_windowHeight = HIWORD(lparam);
 		if (m_device) {
@@ -42,18 +54,21 @@ LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 					m_appMaximized = false;
 					OnResize();
 				} else if (m_appResizing) {
-
+					/* Когда юзер тянет за ресайз-бары и меняет размеры - приходит целая очередь сообщений WM_SIZE.  Ничего  делать  при */
+					/* этом не надо - накладно слишком. Лучше дождаться WM_EXITSIZEMOVE и тогда обработать изменения.					 */
 				} else {
 					OnResize();
 				}
 			}
 		}
 		return 0;
+	/* WM_ENTERSIZEMOVE приходит, когда юзер захватывает ресайз-бары. */
 	case WM_ENTERSIZEMOVE:
 		m_appPaused = true;
 		m_appResizing = true;
 		m_timer.Stop();
 		return 0;
+	/* WM_ENTERSIZEMOVE приходит, когда юзер отпускает ресайз-бары. */
 	case WM_EXITSIZEMOVE:
 		m_appPaused = false;
 		m_appResizing = false;
@@ -65,6 +80,7 @@ LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 		return 0;
 	case WM_MENUCHAR:
 		return MAKELRESULT(0, MNC_CLOSE);
+	/* Перехватываем WM_GETMINMAXINFO для предотвращения изменения размеров окна меньше указанных ниже. */
 	case WM_GETMINMAXINFO:
 		((MINMAXINFO*)lparam)->ptMinTrackSize.x = 200;
 		((MINMAXINFO*)lparam)->ptMinTrackSize.y = 200;
@@ -94,6 +110,9 @@ LRESULT D3D12Base::MsgProc(HWND hWindow, UINT msg, WPARAM wParam, LPARAM lparam)
 }
 
 
+//! ===========================================================  Цикл  приложения  =========================================================
+/*
+																																		  */
 int D3D12Base::Run()
 {
 	MSG msg = { 0 };
@@ -116,9 +135,6 @@ int D3D12Base::Run()
 	}
 	return (int)msg.wParam;
 }
-
-
-D3D12Base* D3D12Base::m_directXApplication = nullptr;
 
 
 //! ========================================================  Общая  инициализация  =======================================================
@@ -255,12 +271,20 @@ bool D3D12Base::InitMainWindow()
 	return true;
 }
 
+
+//! ===========================================================    Деструктор   ===========================================================
+/*
+   Перед разрушением ожидает выполнения всех команд в очереди GPU																		 */
 D3D12Base::~D3D12Base()
 {
 	if (m_device != nullptr)
 		FlushCommandQueue();
 }
 
+
+//! =================================================   Вывод в лог доступных адаптеров   =================================================
+/*
+																																		 */
 void D3D12Base::LogAdapters()
 {
 	IDXGIAdapter1 *adapter1 = nullptr;
@@ -275,6 +299,10 @@ void D3D12Base::LogAdapters()
 
 }
 
+
+//! =====================================   Вывод в лог доступных дисплеев для конкретного адаптера   =====================================
+/*
+																																		 */
 void D3D12Base::LogAdapterOutputs(IDXGIAdapter1 *adapter1)
 {
 	IDXGIOutput *output = nullptr;
@@ -287,6 +315,10 @@ void D3D12Base::LogAdapterOutputs(IDXGIAdapter1 *adapter1)
 	}
 }
 
+
+//! ======================================   Вывод в лог доступных режимов для конкретного дисплея   ======================================
+/*
+																																		 */
 void D3D12Base::LogOutputDisplayModes(IDXGIOutput *output)
 {
 	UINT count = 0;
@@ -359,21 +391,20 @@ void D3D12Base::CreateSwapChain()
 //! ===============================================   Создание куч дескрипторов RTV и DSV   ===============================================
 /*
    В кучах дескрипторов живут дескрипторы (внезапно). С их помощью различные этапы конвейера GPU обращаются к ресурсам, буферам, текстурам.
-RTV-дескриптор указывает на буфер, в который попадают результаты рендеринга. Им может быть, например, back-буфер из SwapChain'a.  Поскольку
-в данном случае у нас 2 буфера в SwapChain, то для каждого из них нужно создать дескриптор. В OnResize() этим дескрипторам  будет  сказано,
-указывать на back-буферы SwapChain'a, а в Draw() через них вывод рендеринга будет направляться в back-буферы, каждый раз - в  другой буфер.
-DSV-дескриптор указывает на бувер теста глубины и трафарета. Этт буфер создаётся далее, в OnResize(). Дескриптор используется  для  доступа
-Output Merger'a к буферу глубин (как RTV - к буферу отрисовки). 
-*/
+RTV-дескриптор указывает на буфер, в который попадают результаты рендеринга (OM-state). Им может быть, например, back-буфер из SwapChain'a.
+Поскольку в данном случае у нас 2 буфера в SwapChain, то для каждого из них нужно создать дескриптор. В OnResize() этим дескрипторам  будет
+сказано указывать на back-буферы SwapChain'a, а в Draw() через них вывод рендеринга будет направляться в back-буферы, каждый раз - в другой
+буфер. DSV-дескриптор указывает на бувер теста глубины и трафарета. Этт буфер создаётся далее, в OnResize().  Дескриптор  используется  для
+доступа Output Merger'a к буферу глубин (как RTV - к буферу отрисовки).													 (стр. 195, 196) */
 void D3D12Base::CreateRtvDsvDescriptorHeaps()
 {
-	D3D12_DESCRIPTOR_HEAP_DESC RTV_heap_desc;
+	D3D12_DESCRIPTOR_HEAP_DESC RTV_heap_desc;				// В куче RenderTargetView-дескрипторов их будет 2 (для каждого back-буфера)
 	RTV_heap_desc.NumDescriptors = m_swapChainBuffersCount;
 	RTV_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_RTV;
 	RTV_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
 	RTV_heap_desc.NodeMask = 0;
 
-	D3D12_DESCRIPTOR_HEAP_DESC DSV_heap_desc;
+	D3D12_DESCRIPTOR_HEAP_DESC DSV_heap_desc;				// В куче DepthStencilView-дескрипторов будет 1 дескриптор (для 1 depth-буфера)
 	DSV_heap_desc.NumDescriptors = 1;
 	DSV_heap_desc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_DSV;
 	DSV_heap_desc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_NONE;
@@ -383,9 +414,15 @@ void D3D12Base::CreateRtvDsvDescriptorHeaps()
 	ThrowIfFailed(m_device->CreateDescriptorHeap(&DSV_heap_desc, IID_PPV_ARGS(m_DSV_heap.GetAddressOf())));
 }
 
+
+//! =======================================   Дождаться окончания выполнения команд в очереди GPU   =======================================
 void D3D12Base::FlushCommandQueue()
 {
+	/* Инкрементим значение Fence */
 	m_currentFence++;
+
+	/* Толкаем в очередь команду-маркер "Установить значение Fence = m_currentFence". До  выполнения  этой  команды  значение  Fence  будет
+	меньше, что проверяется далее. К моменту выполнения маркера нужно привязаться событием и ждать его наступления.		(стр. 181 - 184) */
 	ThrowIfFailed(m_cmdQueue->Signal(m_fence.Get(), m_currentFence));
 	if (m_fence->GetCompletedValue() < m_currentFence) {
 		HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
@@ -396,6 +433,9 @@ void D3D12Base::FlushCommandQueue()
 }
 
 
+//! =======================================================   Подсчёт  статистики   =======================================================
+/*
+   Таймер выдаёт время в секундах, т.о. каждую секунду подсчитываем FPS и обратную величину. Результаты пишем в название окна.			 */
 void D3D12Base::CalculateFrameStats()
 {
 	static int frameCnt = 0;
@@ -415,32 +455,45 @@ void D3D12Base::CalculateFrameStats()
 }
 
 
+//! =====================================================   Обработчик Resize Event   =====================================================
+/*
+   Вызывается сразу после инициализации  окна и  Direct3D - для начальной инициализации back-буферов и depthStencil-буфера -, а  также  при
+изменении размеров окна, т.к. нужно пересоздать вышеупомянутые буферы в соответствии с новыми размерами окна и привязать к ним  дескрипторы
+соответственно. Viewport и ScissorRect так же преписываются  (но устанавливаются в Draw() для RasteriserState),  т.к.  зависят  от размеров
+окна.																													(стр. 196 - 206) */
 void D3D12Base::OnResize()
 {
-	assert(m_device);
+	/* К моменту вызова OnResize() девайс, цепь связи и аллокатор должны быть уже созданы. */
+	assert(m_device);				
 	assert(m_swapChain);
 	assert(m_cmdAllocator);
 
-	FlushCommandQueue();
-
+	/* Ждём, когда GPU выполнит команды в очереди (если они там есть) и ресетим список команд, чтоб можно было в него добавлять команды. */
+	FlushCommandQueue();			
 	ThrowIfFailed(m_cmdList->Reset(m_cmdAllocator.Get(), nullptr));
-	for (int i = 0; i < m_swapChainBuffersCount; ++i) {
-		m_swapChainBuffers[i].Reset();
-	}
+
+	/* Ресетим укзатели на ресурсы буферов SwapChain и буфера глубин/трафарета. */
+	for (int i = 0; i < m_swapChainBuffersCount; ++i)
+		m_swapChainBuffers[i].Reset();	
 	m_depthStencilBuffer.Reset();
-	ThrowIfFailed(m_swapChain->ResizeBuffers(m_swapChainBuffersCount, m_windowWidth, m_windowHeight, m_backBufferFormat, DXGI_SWAP_CHAIN_FLAG_ALLOW_MODE_SWITCH));
+
+	/* Задаём всем back-буферам новые размеры и формат, указываем текущий номер back-буфера */
+	ThrowIfFailed(m_swapChain->ResizeBuffers(m_swapChainBuffersCount, m_windowWidth, m_windowHeight, m_backBufferFormat, SC_ALLOW_MODE_SWITCH));
 	m_currentBackBuffer = 0;
 
-
+	/* Теперь получаем первый дескриптор из кучи RTV-дескрипторов (их там 2). Потом заполняем массив ресурсов back-буферами.  (стр. 196) */
 	CD3DX12_CPU_DESCRIPTOR_HANDLE rtvHeapHandle(m_RTV_heap->GetCPUDescriptorHandleForHeapStart());
-	for (int i = 0; i < m_swapChainBuffersCount; ++i) {
+	for (int i = 0; i < m_swapChainBuffersCount; ++i)
+	{
 		ThrowIfFailed(m_swapChain->GetBuffer(i, IID_PPV_ARGS(&m_swapChainBuffers[i])));
+		/* Создаём дескриптор на back-буфер. При этом описание, формат дескриптору не задаём (nullptr), т.к.  формат  буфера  при  создании
+		Swapchain был определён, т.е. != TYPELESS. */
 		m_device->CreateRenderTargetView(m_swapChainBuffers[i].Get(), nullptr, rtvHeapHandle);
 		rtvHeapHandle.Offset(1, m_RTV_descriptorSize);
 	}
 
-	// Формат ресурса DXGI_FORMAT_R24G8_TYPELESS, т.к.он будет использоваться двумя вьюхами: SRV (формат DXGI_FORMAT_R24_UNORM_X8_TYPELESS) и
-	// DSV (формат DXGI_FORMAT_D24_UNORM_S8_UINT).
+	/* Для DSV-дескриптора ресурс ещё не создан (в отличие от ситуации с RTV, т.к. ресурсы back-буферов создаются Swapchain'ом за кулисами)
+	Т.о. сначала создаём DepthStencil-буфер. Для этого сперва заполняем дескрипшен с описанием создаваемого ресурса.    (стр. 198 - 203) */
 	D3D12_RESOURCE_DESC depthStencilDesc;
 	depthStencilDesc.Dimension = D3D12_RESOURCE_DIMENSION_TEXTURE2D;
 	depthStencilDesc.Alignment = 0;
@@ -448,6 +501,9 @@ void D3D12Base::OnResize()
 	depthStencilDesc.Height = m_windowHeight;
 	depthStencilDesc.DepthOrArraySize = 1;
 	depthStencilDesc.MipLevels = 1;
+
+	/* Формат   ресурса   задаём    неопределённый   -  DXGI_FORMAT_R24G8_TYPELESS,   т.к.   он   будет   использоваться   двумя   вьюхами:
+	SRV ( DXGI_FORMAT_R24_UNORM_X8_TYPELESS ) и DSV (формат DXGI_FORMAT_D24_UNORM_S8_UINT). */
 	depthStencilDesc.Format = DXGI_FORMAT_R24G8_TYPELESS;
 	depthStencilDesc.SampleDesc.Count = m_multisamplingEnabled ? 4 : 1;
 	depthStencilDesc.SampleDesc.Quality = m_multisamplingEnabled ? (m_msQualityLevels - 1) : 0;
@@ -459,25 +515,33 @@ void D3D12Base::OnResize()
 	optimalClear.DepthStencil.Depth = 1.0f;
 	optimalClear.DepthStencil.Stencil = 0;
 
-	ThrowIfFailed(m_device->CreateCommittedResource(
-		&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT), D3D12_HEAP_FLAG_NONE, &depthStencilDesc, D3D12_RESOURCE_STATE_COMMON, &optimalClear,
-		IID_PPV_ARGS(m_depthStencilBuffer.GetAddressOf())));
+	/* Создаём ресурс */
+	ThrowIfFailed(m_device->CreateCommittedResource(&CD3DX12_HEAP_PROPERTIES(D3D12_HEAP_TYPE_DEFAULT),
+													D3D12_HEAP_FLAG_NONE, 
+													&depthStencilDesc,
+													D3D12_RESOURCE_STATE_COMMON, 
+													&optimalClear,
+													IID_PPV_ARGS(m_depthStencilBuffer.GetAddressOf())));
 
+	/* Создаём дескриптор на ресурс DS-буфера. Задаём формат дескриптора DXGI_FORMAT_D24_UNORM_S8_UINT. */
 	D3D12_DEPTH_STENCIL_VIEW_DESC dsvDesc;
 	dsvDesc.Flags = D3D12_DSV_FLAG_NONE;
 	dsvDesc.ViewDimension = D3D12_DSV_DIMENSION_TEXTURE2D;
 	dsvDesc.Format = m_DS_bufferFormat;
 	dsvDesc.Texture2D.MipSlice = 0;
-
 	m_device->CreateDepthStencilView(m_depthStencilBuffer.Get(), &dsvDesc, DepthStencilView());
+
+	/* Добавляем команду перехода ресурса из общего состояния в состояние записи информации глубины.					 (стр. 185, 186) */
 	m_cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(m_depthStencilBuffer.Get(), D3D12_RESOURCE_STATE_COMMON, D3D12_RESOURCE_STATE_DEPTH_WRITE));
 	ThrowIfFailed(m_cmdList->Close());
 
+	/* Пихаем список в очередь на выполнение, ждём завершение */
 	ID3D12CommandList* cmdLists[] = { m_cmdList.Get() };
 	m_cmdQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);
 
 	FlushCommandQueue();
 
+	/* Задаём новое описание для Viewport и ScissorRect */
 	m_viewPort.TopLeftX = 0;
 	m_viewPort.TopLeftY = 0;
 	m_viewPort.Width = static_cast<float>(m_windowWidth);
@@ -485,23 +549,34 @@ void D3D12Base::OnResize()
 	m_viewPort.MinDepth = 0.0f;
 	m_viewPort.MaxDepth = 1.0f;
 
-	m_scissorRect.top = 0;
-	m_scissorRect.left = 0;
-	m_scissorRect.bottom = m_windowHeight;
-	m_scissorRect.right = m_windowWidth;
-
+	m_scissorRect = { 0, 0, m_windowWidth, m_windowHeight };
 }
 
+
+//! =======================================================   Текущий  Back-буфер   =======================================================
+/*
+   Возвращает ресурс back-буфера, текущий для данного фрейма. Каждый фрейм индекс текущего буфера переключается (0-1-0-1... для 2 буферов).
+Этот индекс отслеживается переменной m_currentBackBuffer. Ресурс соответствующего back-буфера используется в Draw()  для  команд  переходов
+этого ресурса из состояния PRESENT в состояние RENDER_TARGET и обратно.																	 */
 ID3D12Resource* D3D12Base::CurrentBackBuffer()
 {
 	return m_swapChainBuffers[m_currentBackBuffer].Get();
 }
 
+
+//! =================================================   Текущий дескриптор  Back-буфера   =================================================
+/*
+   Возвращает дескриптор, указывающий на текущий back-буфер. Для этого берёт хандлер CD3DX12_CPU_DESCRIPTOR_HANDLE, и смещает его на нужный
+дескриптор в соответствии с номером текущего буфера. Этот дескриптор используется в Draw() Output Merger'ом для выбора таргета рисования.*/
 D3D12_CPU_DESCRIPTOR_HANDLE D3D12Base::CurrentBackBufferView()
 {
 	return CD3DX12_CPU_DESCRIPTOR_HANDLE(m_RTV_heap->GetCPUDescriptorHandleForHeapStart(), m_currentBackBuffer, m_RTV_descriptorSize);
 }
 
+
+//! =================================================   Дескриптор  DepthStencil-буфера   =================================================
+/*
+   Этот дескриптор используется в Draw() Output Merger'ом для установки буфера глубин.													 */
 D3D12_CPU_DESCRIPTOR_HANDLE D3D12Base::DepthStencilView()
 {
 	return CD3DX12_CPU_DESCRIPTOR_HANDLE(m_DSV_heap->GetCPUDescriptorHandleForHeapStart());

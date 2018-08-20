@@ -9,7 +9,6 @@
 //
 //   float4x4 gWorldViewProj;           // Offset:    0 Size:    64
 //   float4 gPulseColor;                // Offset:   64 Size:    16 [unused]
-//   float gTime;                       // Offset:   80 Size:     4 [unused]
 //
 // }
 //
@@ -52,7 +51,7 @@ dcl_temps 2
 //   o1.x <- <VS return value>.Color.x; o1.y <- <VS return value>.Color.y; o1.z <- <VS return value>.Color.z; o1.w <- <VS return value>.Color.w; 
 //   o0.x <- <VS return value>.PosH.x; o0.y <- <VS return value>.PosH.y; o0.z <- <VS return value>.PosH.z; o0.w <- <VS return value>.PosH.w
 //
-#line 25 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\VertexShader.hlsl"
+#line 34 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\VertexShader.hlsl"
 mov r0.xyz, v0.xyzx
 mov r0.w, l(1.000000)
 dp4 r1.x, r0.xyzw, cb0[0].xyzw  // r1.x <- vout.PosH.x
@@ -60,10 +59,10 @@ dp4 r1.y, r0.xyzw, cb0[1].xyzw  // r1.y <- vout.PosH.y
 dp4 r1.z, r0.xyzw, cb0[2].xyzw  // r1.z <- vout.PosH.z
 dp4 r1.w, r0.xyzw, cb0[3].xyzw  // r1.w <- vout.PosH.w
 
-#line 27
+#line 36
 mov r0.xyzw, v1.xyzw  // r0.x <- vout.Color.x; r0.y <- vout.Color.y; r0.z <- vout.Color.z; r0.w <- vout.Color.w
 
-#line 28
+#line 37
 mov o0.xyzw, r1.xyzw
 mov o1.xyzw, r0.xyzw
 ret 

@@ -2,8 +2,17 @@ cbuffer cbPerObject : register(b0)
 {
 	float4x4 gWorldViewProj;
 	float4 gPulseColor;
-	float gTime;
 };
+
+cbuffer cbPerFrame : register(b1)
+{
+	float gTime;
+}
+
+cbuffer cbPerFrame2 : register(b2)
+{
+	float gFactor;
+}
 
 struct VertexIn
 {

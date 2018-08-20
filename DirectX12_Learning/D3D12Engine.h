@@ -8,7 +8,6 @@ struct Constants
 {
 	XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
 	XMFLOAT4 gPulseColor;
-	float gTime;
 };
 
 struct Vertex
@@ -54,7 +53,7 @@ private:
 	virtual void OnMouseUp(WPARAM btnState, int x, int y);
 	virtual void OnMouseMove(WPARAM btnState, int x, int y);
 
-	void BuildDescriptorHeaps();
+	void CreateCbvDescriptorHeaps();
 	void BuildConstantBuffers();
 	void BuildRootSignature();
 	void BuildShadersAndInputLayout();
@@ -67,7 +66,9 @@ private:
 	ComPtr<ID3DBlob> m_vsByteCode = nullptr;
 	ComPtr<ID3DBlob> m_psByteCode = nullptr;
 	std::unique_ptr<MeshGeometry<2>> m_boxGeometry = nullptr;
-	std::unique_ptr<UploadBuffer<Constants>> m_constantBuffer = nullptr;
+	std::unique_ptr<UploadBuffer<Constants>> m_constant_po_buf = nullptr;	// Константы пообъектные
+	std::unique_ptr<UploadBuffer<float>> m_constant_pf_buf = nullptr;	// Константы покадровые
+
 	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputLayout;
 
 	XMFLOAT4X4 m_world = MathHelper::Identity4x4();

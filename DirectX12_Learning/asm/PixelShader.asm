@@ -9,7 +9,20 @@
 //
 //   float4x4 gWorldViewProj;           // Offset:    0 Size:    64 [unused]
 //   float4 gPulseColor;                // Offset:   64 Size:    16
-//   float gTime;                       // Offset:   80 Size:     4
+//
+// }
+//
+// cbuffer cbPerFrame
+// {
+//
+//   float gTime;                       // Offset:    0 Size:     4
+//
+// }
+//
+// cbuffer cbPerFrame2
+// {
+//
+//   float gFactor;                     // Offset:    0 Size:     4
 //
 // }
 //
@@ -19,6 +32,8 @@
 // Name                                 Type  Format         Dim      HLSL Bind  Count
 // ------------------------------ ---------- ------- ----------- -------------- ------
 // cbPerObject                       cbuffer      NA          NA            cb0      1 
+// cbPerFrame                        cbuffer      NA          NA            cb1      1 
+// cbPerFrame2                       cbuffer      NA          NA            cb2      1 
 //
 //
 //
@@ -38,7 +53,9 @@
 //
 ps_5_0
 dcl_globalFlags refactoringAllowed | skipOptimization
-dcl_constantbuffer CB0[6], immediateIndexed
+dcl_constantbuffer CB0[5], immediateIndexed
+dcl_constantbuffer CB1[1], immediateIndexed
+dcl_constantbuffer CB2[1], immediateIndexed
 dcl_input_ps linear v1.xyzw
 dcl_output o0.xyzw
 dcl_temps 2
@@ -48,22 +65,23 @@ dcl_temps 2
 //   v1.x <- pin.Color.x; v1.y <- pin.Color.y; v1.z <- pin.Color.z; v1.w <- pin.Color.w; 
 //   o0.x <- <PS return value>.x; o0.y <- <PS return value>.y; o0.z <- <PS return value>.z; o0.w <- <PS return value>.w
 //
-#line 17 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\PixelShader.hlsl"
+#line 26 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\PixelShader.hlsl"
 itof r0.x, l(2)
-mul r0.x, r0.x, cb0[5].x
+mul r0.x, r0.x, cb1[0].x
+mul r0.x, r0.x, cb2[0].x
 mov r0.y, l(-0.785398)
 add r0.x, r0.y, r0.x
 sincos r0.x, null, r0.x
 mul r0.x, r0.x, l(0.500000)
 add r0.x, r0.x, l(0.500000)  // r0.x <- s
 
-#line 19
+#line 28
 mov r1.xyzw, -v1.xyzw
 add r1.xyzw, r1.xyzw, cb0[4].xyzw
 mul r0.xyzw, r0.xxxx, r1.xyzw
 add r0.xyzw, r0.xyzw, v1.xyzw  // r0.x <- c.x; r0.y <- c.y; r0.z <- c.z; r0.w <- c.w
 
-#line 20
+#line 29
 mov o0.xyzw, r0.xyzw
 ret 
-// Approximately 13 instruction slots used
+// Approximately 14 instruction slots used

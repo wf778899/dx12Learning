@@ -18,7 +18,7 @@ bool D3D12Engine::Initialize()
 		return false;
 
 	ThrowIfFailed(m_cmdList->Reset(m_cmdAllocator.Get(), nullptr));
-	BuildDescriptorHeaps();
+	CreateCbvDescriptorHeaps();
 	BuildConstantBuffers();
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
@@ -58,18 +58,19 @@ void D3D12Engine::Update(const GameTimer & timer)
 	Constants constants;
 	XMStoreFloat4x4(&constants.WorldViewProj, XMMatrixTranspose(worldViewProj));
 	constants.gPulseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	constants.gTime = timer.TotalTime()*0;
-	m_constantBuffer->CopyData(0, constants);
+	m_constant_po_buf->CopyData(0, constants);
 
 	world = XMMatrixTranslation(1.0f, -1.0f, -1.0f);
 	worldViewProj = world * view * proj;
 	XMStoreFloat4x4(&constants.WorldViewProj, XMMatrixTranspose(worldViewProj));
 	constants.gPulseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	constants.gTime = timer.TotalTime()*0;
-	m_constantBuffer->CopyData(1, constants);
+	m_constant_po_buf->CopyData(1, constants);
+
+	m_constant_pf_buf->CopyData(0, timer.TotalTime());
+	m_constant_pf_buf->CopyData(1, 5.0f);
 }
 
-void D3D12Engine::Draw(const GameTimer & timer)
+void D3D12Engine::Draw(const GameTimer &timer)
 {
 	ThrowIfFailed(m_cmdAllocator->Reset());
 	ThrowIfFailed(m_cmdList->Reset(m_cmdAllocator.Get(), m_pipelineState.Get()));
@@ -100,12 +101,14 @@ void D3D12Engine::Draw(const GameTimer & timer)
 	// Константный буфер создаётся там же (просто выделяется место в памяти GPU), но элементы инитятся в Update().
 	CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_CBV_heap->GetGPUDescriptorHandleForHeapStart());
 	m_cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
+	CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle2(m_CBV_heap->GetGPUDescriptorHandleForHeapStart(), 2, m_CBV_SRV_UAV_descriptorSize);
+	m_cmdList->SetGraphicsRootDescriptorTable(1, cbvHandle2);
 
 	// Рисуем первый меш, используя первый дескриптор
 	m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["box"].IndexCount, 1, m_boxGeometry->DrawArgs["box"].StartIndexLocation, m_boxGeometry->DrawArgs["box"].BaseVertexLocation, 0);
 
 	// Получаем второй дескриптор из кучи, сдвигая Handle. Он указывает на второй элемент буфера констант. Рисуем второй меш, установив
-	// новый дескриптор (SetGraphicsRootDescriptorTable()).
+	// сдвинутый дескриптор заново (SetGraphicsRootDescriptorTable()).
 	cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize);
 	m_cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
 	m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["pyramide"].IndexCount, 1, m_boxGeometry->DrawArgs["pyramide"].StartIndexLocation, m_boxGeometry->DrawArgs["pyramide"].BaseVertexLocation, 0);
@@ -155,48 +158,113 @@ void D3D12Engine::OnMouseMove(WPARAM btnState, int x, int y)
 	m_lastMousePos.y = y;
 }
 
-void D3D12Engine::BuildDescriptorHeaps()
+
+//! ======================================================   Куча дескрипторов CBV   ======================================================
+/*
+   Создаём  кучу  из  4  дескрипторов для константных буферов.  Два  для  пообъектных  констант  (в одном буфере) и 2 для общих (в другом).
+Пообъектные дескрипторы подключаются поочерёдно при отрисовке соотв. объекта. Общие - один раз в за кадр.				(стр. 337 - 339) */
+void D3D12Engine::CreateCbvDescriptorHeaps()
 {
-	// Создаём кучу из 2 дескрипторов для константного буфера. Каждый дескриптор будет использован для отрисовки соотв. объекта сцены.
 	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
-	cbvHeapDesc.NumDescriptors = 2;
+	cbvHeapDesc.NumDescriptors = 4;
 	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	cbvHeapDesc.NodeMask = 0;
 	ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_CBV_heap)));
 }
 
+
+//! =============================================   Константный буфер и дескрипторы на него   =============================================
+/*
+   У нас 2 константных буфера. В одном - константы, характерные для каждого объекта сцены. В другом - константы, общие  для  всех объектов.
+И те и другие перезаписываются каждый фрейм. На каждую константу привязывается свой дескриптор. Пообъектные дескрипторы подключаются в Draw
+поочерёдно, к одному и тому же слоту в шейдере, при отрисоке каждого объекта. Общие - один раз до начала отрисовки всех объектов.
+   Здесь вначале создаём буферы констант. Затем - дескрипторы на их элементы.											(стр. 337 - 339) */
 void D3D12Engine::BuildConstantBuffers()
 {
-	// Создаём буфер констант, состоящий из 2 элементов
-	m_constantBuffer = std::make_unique<UploadBuffer<Constants>>(m_device.Get(), 2, true);
-	const UINT cbElemByteSize = Util::CalcConstantBufferByteSize(sizeof(Constants));
-	D3D12_GPU_VIRTUAL_ADDRESS cbAddress = m_constantBuffer->Resource()->GetGPUVirtualAddress();
+	/* Создаём константные буферы. Для этого используем UploadBuffer - он просто инстанцирует  в памяти GPU  буфер  и  предоставляет  метод
+	CopyData( индекс, данные ). Т.о. можно легко обновить буфер в любое время.															 */
+	m_constant_po_buf = std::make_unique<UploadBuffer<Constants>>(m_device.Get(), 2, true);	// Пообъектные константы (по числу объектов)
+	m_constant_pf_buf = std::make_unique<UploadBuffer<float>>(m_device.Get(), 2, true);		// Общие
+
+	/* Размеры одного элемента буферов. */
+	const UINT cb_po_ElemByteSize = m_constant_po_buf->elementByteSize();
+	const UINT cb_pf_ElemByteSize = m_constant_pf_buf->elementByteSize();
+
+	/* Получаем адрес начал буферов в памяти GPU. */
+	D3D12_GPU_VIRTUAL_ADDRESS cb_po_Address = m_constant_po_buf->Resource()->GetGPUVirtualAddress();
+	D3D12_GPU_VIRTUAL_ADDRESS cb_pf_Address = m_constant_pf_buf->Resource()->GetGPUVirtualAddress();
+
+	/* Теперь, зная адреса буферов и размеры их элементов, инициализируем дескрипторы для них. */
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(m_CBV_heap->GetCPUDescriptorHandleForHeapStart());	// Получаем хандл на первый дескриптор кучи
 
 	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
-	cbvDesc.BufferLocation = cbAddress;
-	cbvDesc.SizeInBytes = cbElemByteSize;
+	cbvDesc.BufferLocation = cb_po_Address;
+	cbvDesc.SizeInBytes = cb_po_ElemByteSize;
+	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);	// Заполняем первый дескриптор (это пообъектный)
 
-	// Создаём Handle, указывающий на первый дескриптор кучи CBV. Обратить внимание - это "CPU"_DESCRIPTOR_HANDLE. С его помощью пишем в
-	// первый дескриптор инфу, на какую область ему указывать и какого она размера. Эта инфа берётся из D3D12_CONSTANT_BUFFER_VIEW_DESC.
-	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvHandle(m_CBV_heap->GetCPUDescriptorHandleForHeapStart());
-	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);
-
-	// Заполняем второй дескриптор. Для этого пишем в D3D12_CONSTANT_BUFFER_VIEW_DESC новый адрес, куда указывать, и получаем Handle на
-	// второй дескриптор в куче (просто сдвигая вперёд ранее полученный на размер дескриптора)
-	cbvDesc.BufferLocation += cbElemByteSize;
 	cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize);
-	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);
+	cbvDesc.BufferLocation += cb_po_ElemByteSize;
+	cbvDesc.SizeInBytes = cb_po_ElemByteSize;
+	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);	// Заполняем второй дескриптор (это пообъектный)
+
+	cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize);
+	cbvDesc.BufferLocation = cb_pf_Address;
+	cbvDesc.SizeInBytes = cb_pf_ElemByteSize;
+	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);	// Заполняем третий дескриптор (это общий)
+
+	cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize);
+	cbvDesc.BufferLocation += cb_pf_ElemByteSize;
+	cbvDesc.SizeInBytes = cb_pf_ElemByteSize;
+	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);	// Заполняем четвёртый дескриптор (это общий)
 }
 
+
+//! ======================================================   Сигнатура  параметров   ======================================================
+/*
+   Сигнатура используется для определения подключения дескрипторов к шейдерам. Конкретнее - начиная с  какого  слота  сколько  дескрипторов
+подключается и какого они типа. Эту информацию несёт в себе параметр D3D12_ROOT_PARAMETER. Таких параметров может быть много (здесь - 2), и
+каждый из них сообщает, какие дескрипторы к каким слотам подключать. D3D12_ROOT_PARAMETER бывает 3 типов - константа, дескриптор и  таблица
+дескрипторов. Сейчас мы пока инициализируем 2 root-параметра, как  2  таблицы  дескрипторов.  Таблица  объявляет  подключение  непрерывного
+диапазона, длиной L, начиная со слота N.
+   На данный момент мы хотим подключить к слоту b0 одну пообъектную константу из буфера *_po_buf, а к слотам b1,b2 - константы из *_pf_buf.
+Пообъектные константы подключаются по очереди к слоту b0 при отрисовке соотв. объекта, с  помощью соотв. дескриптора. Но хоть их  и  много,
+сигнатура подключения выглядит просто: начиная со слота b0 подключается диапазон из 1 дескриптора. Эту сигнатуру описывает 1 root-параметр.
+   Второй root-параметр описывает подключение диапазона из двух общих констант к слотам, начиная с b1.
+Объединить  2  root-параметра  в  1  здесь  не получится,  т.к.  они  описывают  подключение непрерывных диапазонов дескрипторов. А собрать
+пообъектные дескрипторы (из которых только один может быть подключен) с общими в один диапазон не получится.
+   Схематично можно нарисовать это так:
+				|-------------------------------|---------------|---------------|
+				|              b0				|	   b1		|	   b2		|
+				|--------------/\---------------|------/\-------|------/\-------|
+						_______||________			   ||			   ||
+ 						|			    |			   ||              ||        
+				|-------|-------|-------|-------|------||-------|------||-------|
+				|  Дескриптор 1 |  Дескриптор 2 |  Дескриптор 3 |  Дескриптор 4 |
+				|---------------|---------------|---------------|---------------|
+					   ||              ||		       ||              ||		 
+					   ||			   ||		       ||			   ||		 
+				|------\/-------|------\/-------|------\/-------|------\/-------|
+				| Константа для | Константа для |     Общая     |     Общая     |
+				|   1 объекта   |   2 объекта   |  константа 1  |  константа 2  |
+				|---------------|---------------|---------------|---------------|
+				|	   Константный буфер 1      |	   Константный буфер 2      |
+				|-------------------------------|-------------------------------|
+
+   Далее из этих параметров создаётся root-сигнатура, подключаемая в Draw(). Надо помнить, что она ничего не подключает - только описывает.
+Само подключение происходит с помощью SetGraphicsRootDescriptorTable( номер root-параметра, начальный дескриптор ).		(стр. 339 - 344) */
 void D3D12Engine::BuildRootSignature()
 {
-	CD3DX12_ROOT_PARAMETER rootParameter[1];
+	CD3DX12_ROOT_PARAMETER rootParameter[2];
 	CD3DX12_DESCRIPTOR_RANGE cbvTable;
 	cbvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
 	rootParameter[0].InitAsDescriptorTable(1, &cbvTable);
 
-	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(1, rootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
+	CD3DX12_DESCRIPTOR_RANGE cbvTable2;
+	cbvTable2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 1);
+	rootParameter[1].InitAsDescriptorTable(1, &cbvTable2);
+
+	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(2, rootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
 
 	ComPtr<ID3DBlob> serializeRootSig = nullptr;
 	ComPtr<ID3DBlob> errorBlob = nullptr;
@@ -208,6 +276,7 @@ void D3D12Engine::BuildRootSignature()
 	}
 	ThrowIfFailed(m_device->CreateRootSignature(0, serializeRootSig->GetBufferPointer(), serializeRootSig->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
 }
+
 
 void D3D12Engine::BuildShadersAndInputLayout()
 {
@@ -224,6 +293,7 @@ void D3D12Engine::BuildShadersAndInputLayout()
 		{ "COLOR", 0, DXGI_FORMAT_B8G8R8A8_UNORM, 1, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 },
 	};
 }
+
 
 void D3D12Engine::BuildPSO()
 {
@@ -253,6 +323,7 @@ void D3D12Engine::BuildPSO()
 	psoDesc.DSVFormat = m_DS_bufferFormat;
 	ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
 }
+
 
 void D3D12Engine::BuildBoxGeometry()
 {
@@ -292,15 +363,14 @@ void D3D12Engine::BuildBoxGeometry()
 		2, 4, 3,			// Back
 		3, 4, 0				// Left
 	};
-
 	std::array<SeparatedVertex::PosTex, 13> verticesPosTex;
 	std::array<SeparatedVertex::NorTanCol, 13> verticesNorTanCol;
 
-	for (int i = 0; i < verticesSplittedAttr.size(); ++i) {
+	for (int i = 0; i < verticesSplittedAttr.size(); ++i)
+	{
 		verticesPosTex[i] = verticesSplittedAttr[i].pos_tex;
 		verticesNorTanCol[i] = verticesSplittedAttr[i].nor_tan_col;
 	}
-
 	const UINT iByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
 
 	m_boxGeometry = std::make_unique<MeshGeometry<2>>();
