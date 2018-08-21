@@ -8,7 +8,6 @@ struct Constants
 {
 	XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
 	XMFLOAT4 gPulseColor;
-	float gTime;
 };
 
 struct Vertex
@@ -67,8 +66,8 @@ private:
 	ComPtr<ID3DBlob> m_vsByteCode = nullptr;
 	ComPtr<ID3DBlob> m_psByteCode = nullptr;
 	std::unique_ptr<MeshGeometry<2>> m_boxGeometry = nullptr;
-	std::unique_ptr<UploadBuffer<Constants>> m_constantBuffer = nullptr;
-	std::unique_ptr<UploadBuffer<float>> m_constantBuffer2 = nullptr;/////////////
+	std::unique_ptr<UploadBuffer<Constants>> m_constant_po_buf = nullptr;	// Константы пообъектные
+	std::unique_ptr<UploadBuffer<float>> m_constant_pf_buf = nullptr;	// Константы покадровые
 
 	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputLayout;
 
