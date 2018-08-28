@@ -188,8 +188,8 @@ bool D3D12Base::InitDirect3D()
 	HRESULT hr = S_FALSE;
 	DXGI_ADAPTER_DESC desc = { 0 };
 
-	/* Перечисляем адаптеры. С каждым из них пытаемся создать девайс.  При  первой  успешной  попытке  заканчиваем  перечисление. Если с */
-	/* хардовым адаптером не получилось - по-любому получится с эмулятором Microsoft Basic Render Driver.					  (стр. 188) */
+	/* Перечисляем адаптеры. С каждым из них пытаемся создать девайс. При первой успешной попытке заканчиваем перечисление. Если с хардовым
+	адаптером не получилось - по-любому получится с эмулятором Microsoft Basic Render Driver.								  (стр. 188) */
 	for (int i = 0; m_factory4->EnumAdapters(i, &adapter) != DXGI_ERROR_NOT_FOUND; ++i) {
 		adapter->GetDesc(&desc);
 		hr = D3D12CreateDevice(adapter.Get(), D3D_FEATURE_LEVEL_11_0, IID_PPV_ARGS(&m_device));
@@ -204,9 +204,9 @@ bool D3D12Base::InitDirect3D()
 		return false;
 	}
 
-	/* Создаём   ID3D12Fence   - с её помощью можно  синхронизировать  выполнение  списка  команд  на GPU  с работой  CPU. Также  узнаём */
-	/* размеры дескрипторов всех типов. Т.к. они лежат в куче, и известен только адрес первого дескриптора, то  для  обращения к ним  по */
-	/* порядковому номеру или абсолютному смещению нужно знать их размер, варьирующийся от железа к железу.				      (стр. 181) */
+	/* Создаём ID3D12Fence - с её помощью можно  синхронизировать  выполнение списка  команд  на GPU  с работой  CPU. Также  узнаём размеры
+	дескрипторов всех типов. Т.к. они лежат в куче, и известен только адрес первого дескриптора, то для  обращения  к  ним  по  порядковому
+	номеру или абсолютному смещению нужно знать их размер, варьирующийся от железа к железу.								  (стр. 181) */
 	ThrowIfFailed(m_device->CreateFence(0, D3D12_FENCE_FLAG_NONE, IID_PPV_ARGS(&m_fence)));
 	m_RTV_descriptorSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_RTV);
 	m_DSV_descriptrSize = m_device->GetDescriptorHandleIncrementSize(D3D12_DESCRIPTOR_HEAP_TYPE_DSV);
