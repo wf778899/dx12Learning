@@ -51,6 +51,9 @@
     <ClInclude Include="Helpers\MathHelper.h">
       <Filter>Файлы заголовков\Helpers</Filter>
     </ClInclude>
+    <ClInclude Include="FrameResources.h">
+      <Filter>Файлы заголовков</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -76,6 +79,9 @@
     </ClCompile>
     <ClCompile Include="Helpers\MathHelper.cpp">
       <Filter>Исходные файлы\Helpers</Filter>
+    </ClCompile>
+    <ClCompile Include="FrameResources.cpp">
+      <Filter>Исходные файлы</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

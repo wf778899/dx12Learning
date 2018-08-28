@@ -1,7 +1,7 @@
 #pragma once
 
-#include "Helpers/Utilites.h"
 #include "GameTimer.h"
+#include "FrameResources.h"
 
 class D3D12Base
 {
@@ -81,8 +81,8 @@ protected:
 	UINT64 m_RTV_descriptorSize = 0;
 	UINT64 m_DSV_descriptrSize = 0;
 	UINT64 m_CBV_SRV_UAV_descriptorSize = 0;
-	INT32 m_windowWidth = 800;
-	INT32 m_windowHeight = 600;
+	INT32 m_windowWidth = 1024;
+	INT32 m_windowHeight = 768;
 	UINT8 m_msQualityLevels = 0;
 	UINT8 m_currentBackBuffer = 0;
 
@@ -93,4 +93,3 @@ protected:
 	D3D12Base(const D3D12Base &copy) = delete;
 	D3D12Base& operator=(const D3D12Base &rhs) = delete;
 };
-

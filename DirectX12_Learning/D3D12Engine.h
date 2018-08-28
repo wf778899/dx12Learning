@@ -1,38 +1,6 @@
 #pragma once
 
 #include "D3D12Base.h"
-#include "UploadBuffer.h"
-#include "Helpers/MathHelper.h"
-
-struct Constants
-{
-	XMFLOAT4X4 WorldViewProj = MathHelper::Identity4x4();
-	XMFLOAT4 gPulseColor;
-};
-
-struct Vertex
-{
-	XMFLOAT3 Position;
-	XMFLOAT4 Color;
-};
-
- //Этот тип вершин будет передаваться в GPU через 2 слота
-struct SeparatedVertex {
-	// 1 слот
-	struct PosTex {
-		XMFLOAT3 Pos;
-		XMFLOAT2 Tex;
-	};
-	// 2 слот
-	struct NorTanCol {
-		XMFLOAT3 Normal;
-		XMFLOAT3 Tangent;
-		XMCOLOR Color;
-	};
-	PosTex pos_tex;
-	NorTanCol nor_tan_col;
-};
-
 
 class D3D12Engine : public D3D12Base
 {

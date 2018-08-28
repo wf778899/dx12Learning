@@ -800,48 +800,6 @@ inline void MemcpySubresource(_In_ const D3D12_MEMCPY_DEST *dest,
 }
 
 
-//inline UINT64 UpdateSubresources(_In_ ID3D12GraphicsCommandList *cmdList,
-//							 	 _In_ ID3D12Resource *destinationResource,
-//								 _In_ ID3D12Resource *sourceResource,
-//								 _In_range_(0, D3D12_REQ_SUBRESOURCES) UINT firstSubresource,
-//								 _In_range_(0, D3D12_REQ_SUBRESOURCES - firstSubresource) UINT numSubresources,
-//								 UINT64 requiredSize,
-//								 _In_reads_(numSubresources) const D3D12_PLACED_SUBRESOURCE_FOOTPRINT *layouts,
-//								 _In_reads_(numSubresources) const UINT *numRows,
-//								 _In_reads_(numSubresources) const UINT64 *rowSizesInBytes,
-//								 _In_reads_(numSubresources) const D3D12_SUBRESOURCE_DATA *sourceData) {
-//	D3D12_RESOURCE_DESC sourceDesc = sourceResource->GetDesc();
-//	D3D12_RESOURCE_DESC destinDesc = destinationResource->GetDesc();
-//	if (sourceDesc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER || sourceDesc.Width < requiredSize + layouts[0].Offset || requiredSize >(SIZE_T) - 1 ||
-//		(destinDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER && (firstSubresource != 0 || numSubresources != 1))) {
-//		return 0;
-//	}
-//	BYTE *data;
-//	if (FAILED(sourceResource->Map(0, NULL, reinterpret_cast<void**>(&data))))
-//		return 0;
-//	for (UINT i = 0; i < numSubresources; ++i) {
-//		if (rowSizesInBytes[i] >(SIZE_T)-1)
-//			return 0;
-//		D3D12_MEMCPY_DEST destData = { data + layouts[i].Offset, layouts[i].Footprint.RowPitch, layouts[i].Footprint.RowPitch * numRows[i] };
-//		MemcpySubresource(&destData, &sourceData[i], (SIZE_T)rowSizesInBytes[i], numRows[i], layouts[i].Footprint.Depth);
-//	}
-//	sourceResource->Unmap(0, NULL);
-//	if (destinDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) {
-//		CD3DX12_BOX srcBox(UINT(layouts[0].Offset), UINT(layouts[0].Offset + layouts[0].Footprint.Width));
-//		cmdList->CopyBufferRegion(destinationResource, 0, sourceResource, layouts[0].Offset, layouts[0].Footprint.Width);
-//	}
-//	else {
-//		for (UINT i = 0; i < numSubresources; ++i) {
-//			CD3DX12_TEXTURE_COPY_LOCATION Dst(destinationResource, i + firstSubresource);
-//			CD3DX12_TEXTURE_COPY_LOCATION Src(sourceResource, layouts[i]);
-//			cmdList->CopyTextureRegion(&Dst, 0, 0, 0, &Src, nullptr);
-//		}
-//	}
-//	return requiredSize;
-//}
-
-
-
 //%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%   ВСПОМОГАТЕЛЬНЫЕ КЛАССЫ, СТРУКТУРЫ   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
 //! =========================================   Расположение модели в буферах индексов и вершин   =========================================
@@ -886,8 +844,8 @@ template<UINT8 numSlots> struct MeshGeometry
 	DXGI_FORMAT IndexFormat = DXGI_FORMAT_R16_UINT;				// Формат индексного буфера
 	UINT IndexBufferByteSize = 0;
 
-	D3D12_VERTEX_BUFFER_VIEW VBufferViews[numSlots];			// Дескрипторы вершинных буферов (подключаются в Draw() методом IASetVertexBuffers())
-	D3D12_INDEX_BUFFER_VIEW IBufferView;						// Дескриптор индексного буфера (подключаются в Draw() методом IASetIndexBuffer())
+	D3D12_VERTEX_BUFFER_VIEW VBufferViews[numSlots];  // Дескрипторы вершинных буферов (подключаются в Draw() методом IASetVertexBuffers())
+	D3D12_INDEX_BUFFER_VIEW IBufferView;			  // Дескриптор индексного буфера (подключаются в Draw() методом IASetIndexBuffer())
 	bool vbViewInited = false;
 	bool ibViewInited = false;
 	std::unordered_map<std::string, SubmeshGeometry> DrawArgs;	// Расположение моделей в буферах (поимённое)
@@ -923,6 +881,7 @@ template<UINT8 numSlots> struct MeshGeometry
 };
 
 
+//! ========================================================   Класс  исключения   ========================================================
 class DxException
 {
 public:
