@@ -67,7 +67,7 @@ private:
 	ComPtr<ID3DBlob> m_psByteCode = nullptr;
 	std::unique_ptr<MeshGeometry<2>> m_boxGeometry = nullptr;
 	std::unique_ptr<UploadBuffer<Constants>> m_constant_po_buf = nullptr;	// Константы пообъектные
-	std::unique_ptr<UploadBuffer<float>> m_constant_pf_buf = nullptr;	// Константы покадровые
+	std::unique_ptr<UploadBuffer<float>> m_constant_pf_buf = nullptr;		// Константы покадровые
 
 	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputLayout;
 

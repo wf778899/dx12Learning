@@ -1,17 +1,15 @@
 #include "stdafx.h"
 #include "D3D12Engine.h"
 
-
-D3D12Engine::D3D12Engine(HINSTANCE hInstance) : D3D12Base(hInstance)
-{
-}
+//! ============================================================  Конструктор  ============================================================
+D3D12Engine::D3D12Engine(HINSTANCE hInstance) : D3D12Base(hInstance) {}
 
 
-D3D12Engine::~D3D12Engine()
-{
-}
+//! ===========================================================    Деструктор   ===========================================================
+D3D12Engine::~D3D12Engine() {}
 
 
+//! ==========================================================   Иинициализация   =========================================================
 bool D3D12Engine::Initialize()
 {
 	if (!D3D12Base::Initialize())
@@ -31,6 +29,8 @@ bool D3D12Engine::Initialize()
 	return true;
 }
 
+
+//! =====================================================   Обработчик Resize Event   =====================================================
 void D3D12Engine::OnResize()
 {
 	D3D12Base::OnResize();
@@ -38,93 +38,116 @@ void D3D12Engine::OnResize()
 	XMStoreFloat4x4(&m_proj, P);
 }
 
+
+//! =============================================================   Update   ==============================================================
+/*
+   Здесь каждый кадр меняем матрицы объектов и пишем их в константные буферы.															 */
 void D3D12Engine::Update(const GameTimer & timer)
 {
+	Constants constants;
+
 	float x = m_radius * sinf(m_phi) * cos(m_theta);
 	float z = m_radius * sinf(m_phi) * sin(m_theta);
 	float y = m_radius * cosf(m_phi);
 
+	/* Строим View-матрицу по полученным данным, сохраняем её.																			 */
 	XMVECTOR pos = XMVectorSet(x, y, z, 1.0f);
 	XMVECTOR target = XMVectorZero();
 	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-
 	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
 	XMStoreFloat4x4(&m_view, view);
-	XMMATRIX world = XMMatrixTranslation(-1.0f, -1.0f, -1.0f);
-	XMMATRIX proj = XMLoadFloat4x4(&m_proj);
-	XMMATRIX worldViewProj = world * view * proj;
 
-	// Заполняем элементы константного буфера константами для каждого объекта.
-	Constants constants;
+	/* Получаем Projection-матрицу (получена ранее, в инициализирующем вызове OnResize()).												 */
+	XMMATRIX proj = XMLoadFloat4x4(&m_proj);
+
+	/* Строим World-матрицу для Куба, вычисляем WVP-матрицу и пишем её в буфер пообъектных констант [0].								 */
+	XMMATRIX world = XMMatrixTranslation(-1.0f, -1.0f, -1.0f);
+	XMMATRIX worldViewProj = world * view * proj;
 	XMStoreFloat4x4(&constants.WorldViewProj, XMMatrixTranspose(worldViewProj));
 	constants.gPulseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 	m_constant_po_buf->CopyData(0, constants);
 
+	/* Строим World-матрицу для Пирамиды, вычисляем WVP-матрицу и пишем её в буфер пообъектных констант [1].							 */
 	world = XMMatrixTranslation(1.0f, -1.0f, -1.0f);
 	worldViewProj = world * view * proj;
 	XMStoreFloat4x4(&constants.WorldViewProj, XMMatrixTranspose(worldViewProj));
 	constants.gPulseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
 	m_constant_po_buf->CopyData(1, constants);
 
+	/* Заполняем буфер покадровых констант (он нужен только в иллюстративных целях)														 */
 	m_constant_pf_buf->CopyData(0, timer.TotalTime());
 	m_constant_pf_buf->CopyData(1, 5.0f);
 }
 
+
+//! ============================================================   Отрисовка   ============================================================
+/*
+   Рисуем. */
 void D3D12Engine::Draw(const GameTimer &timer)
 {
+	/* Ресетим аллокатор и список команд для повторного использования																	 */
 	ThrowIfFailed(m_cmdAllocator->Reset());
 	ThrowIfFailed(m_cmdList->Reset(m_cmdAllocator.Get(), m_pipelineState.Get()));
 
+	/* Устанока вьюпорта и обрезки																										 */
 	m_cmdList->RSSetViewports(1, &m_viewPort);
 	m_cmdList->RSSetScissorRects(1, &m_scissorRect);
 
-	m_cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
+	/* STATE_PRESENT  ==>  STATE_RENDER_TARGET																							 */
+	m_cmdList->ResourceBarrier(
+		1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
+	/* Очищаем текущий back-буфер и буфер глубин. Подключаем их к Output Merger'у.														 */
 	m_cmdList->ClearRenderTargetView(CurrentBackBufferView(), DirectX::Colors::DarkViolet, 0, nullptr);
 	m_cmdList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
-
 	m_cmdList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
+	/*												_____________________________________________________________
+	  Топология константных дескрипторов в куче:	| Дескриптор | Дескриптор |	  Дескриптор   |   Дескриптор   |
+													| 1 объекта	 | 2 объекта  |	общих констант | общих констант |
+													|____(Куб)___|_(Пирамида)_|_______b1_______|_______b2_______|						 */
 
-	ID3D12DescriptorHeap* descriptorHeaps[] = { m_CBV_heap.Get() };		// Сейчас в куче 2 дескриптора для куба и пирамиды
+	/* Устанавливаем кучи дескрипторов и сигнатуру их подключения к слотам шейдеров														 */
+	ID3D12DescriptorHeap* descriptorHeaps[] = { m_CBV_heap.Get() };
 	m_cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
-
 	m_cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
 
+	/* Устанавливаем буферы вершин и индексный буфер, сообщаем топологию отрисовки точек.												 */
 	m_cmdList->IASetVertexBuffers(0, 2, m_boxGeometry->VertexBufferViews());
-
 	m_cmdList->IASetIndexBuffer(&m_boxGeometry->IndexBufferView());
 	m_cmdList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
-	// Получаем Handle для работы с кучей дескрипторов константного буфера (число дескрипторов = число элементов буфера). Сейчас он
-	// указывает на первый элемент буфера констант. Каждый раз при смене дескриптора нужно вызывать SetGraphicsRootDescriptorTable().
-	// Сами дескрипторы инициализируются (получают адрес/размер области буфера, на которую указывают) в BuildConstantBuffers().
-	// Константный буфер создаётся там же (просто выделяется место в памяти GPU), но элементы инитятся в Update().
-	CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_CBV_heap->GetGPUDescriptorHandleForHeapStart());
-	m_cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
+	/* Дескриптор для b1 (третий в куче). Устанавливаем его в соответствии с сигнатурой второму root-параметру и больше не меняем.		 */
 	CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle2(m_CBV_heap->GetGPUDescriptorHandleForHeapStart(), 2, m_CBV_SRV_UAV_descriptorSize);
 	m_cmdList->SetGraphicsRootDescriptorTable(1, cbvHandle2);
 
-	// Рисуем первый меш, используя первый дескриптор
+	/* Дескриптор для Куба (первый в куче). Устанавливаем его в соответствии с сигнатурой первому root-параметру и рисуем Куб.			 */
+	CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_CBV_heap->GetGPUDescriptorHandleForHeapStart());
+	m_cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
 	m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["box"].IndexCount, 1, m_boxGeometry->DrawArgs["box"].StartIndexLocation, m_boxGeometry->DrawArgs["box"].BaseVertexLocation, 0);
 
-	// Получаем второй дескриптор из кучи, сдвигая Handle. Он указывает на второй элемент буфера констант. Рисуем второй меш, установив
-	// сдвинутый дескриптор заново (SetGraphicsRootDescriptorTable()).
+	/* Дескриптор для Пирамиды (второй в куче, получен смещением первого). Переустанавливаем его первому параметру и рисуем Пирамиду.	 */
 	cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize);
 	m_cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
 	m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["pyramide"].IndexCount, 1, m_boxGeometry->DrawArgs["pyramide"].StartIndexLocation, m_boxGeometry->DrawArgs["pyramide"].BaseVertexLocation, 0);
 
-	m_cmdList->ResourceBarrier(1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+	/* STATE_RENDER_TARGET  ==>  STATE_PRESENT																							 */
+	m_cmdList->ResourceBarrier(
+		1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_RENDER_TARGET, D3D12_RESOURCE_STATE_PRESENT));
+	
+	/* Закрываем список команд и отправляем в очередь на выполнение.																	 */
 	ThrowIfFailed(m_cmdList->Close());
-
 	ID3D12CommandList* cmdLists[] = { m_cmdList.Get() };
 	m_cmdQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);
 
+	/* Свапим back-буферы и ждём окончания выполнения команд.																			 */
 	ThrowIfFailed(m_swapChain->Present(0, 0));
 	m_currentBackBuffer = (m_currentBackBuffer + 1) % m_swapChainBuffersCount;
 
 	FlushCommandQueue();
 }
 
+
+//! =================================================   Обработчик нажатия  кнопки мыши   =================================================
 void D3D12Engine::OnMouseDown(WPARAM btnState, int x, int y)
 {
 	m_lastMousePos.x = x;
@@ -132,11 +155,15 @@ void D3D12Engine::OnMouseDown(WPARAM btnState, int x, int y)
 	SetCapture(m_hWindow);
 }
 
+
+//! =================================================   Обработчик отжатия  кнопки мыши   =================================================
 void D3D12Engine::OnMouseUp(WPARAM btnState, int x, int y)
 {
 	ReleaseCapture();
 }
 
+
+//! ====================================================   Обработчик движения  мыши   ====================================================
 void D3D12Engine::OnMouseMove(WPARAM btnState, int x, int y)
 {
 	if ((btnState & MK_LBUTTON) != 0) {
@@ -257,11 +284,11 @@ void D3D12Engine::BuildRootSignature()
 {
 	CD3DX12_ROOT_PARAMETER rootParameter[2];
 	CD3DX12_DESCRIPTOR_RANGE cbvTable;
-	cbvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);
+	cbvTable.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 0);	// Диапазон из 1 дескриптора подключается к шейдерам, начиная с b0
 	rootParameter[0].InitAsDescriptorTable(1, &cbvTable);
 
 	CD3DX12_DESCRIPTOR_RANGE cbvTable2;
-	cbvTable2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 1);
+	cbvTable2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 1);	// Диапазон из 2 дескрипторов подключается к шейдерам, начиная с b1
 	rootParameter[1].InitAsDescriptorTable(1, &cbvTable2);
 
 	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(2, rootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
@@ -269,15 +296,20 @@ void D3D12Engine::BuildRootSignature()
 	ComPtr<ID3DBlob> serializeRootSig = nullptr;
 	ComPtr<ID3DBlob> errorBlob = nullptr;
 
-	ThrowIfFailed(D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, serializeRootSig.GetAddressOf(), errorBlob.GetAddressOf()));
+	ThrowIfFailed(D3D12SerializeRootSignature(&rootSigDesc, D3D_ROOT_SIGNATURE_VERSION_1, &serializeRootSig, &errorBlob));
 
 	if (errorBlob != nullptr) {
 		::OutputDebugStringA((char*)errorBlob->GetBufferPointer());
 	}
-	ThrowIfFailed(m_device->CreateRootSignature(0, serializeRootSig->GetBufferPointer(), serializeRootSig->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
+	ThrowIfFailed(m_device->CreateRootSignature(
+		0, serializeRootSig->GetBufferPointer(), serializeRootSig->GetBufferSize(), IID_PPV_ARGS(&m_rootSignature)));
 }
 
 
+//! ===========================================   Загрузка шейдеров,  определение InputLayout   ===========================================
+/*
+   Загружает байт-код из .cso-прекомпилированных файлов шейдеров. Вершины описываются атрибутами через 2 слота. К одному  будем  подключать
+вершинный буфер со значениями "POSITION" и "TEXCOORD", ко второму - "NORMAL", "TANGENT" и "COLOR".			 (стр. 321 - 325, 344 - 353) */
 void D3D12Engine::BuildShadersAndInputLayout()
 {
 	HRESULT hr = S_OK;
@@ -286,15 +318,31 @@ void D3D12Engine::BuildShadersAndInputLayout()
 
 	m_inputLayout =
 	{
-		{ "POSITION", 0, DXGI_FORMAT_R32G32B32_FLOAT, 0, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{ "TEXCOORD", 0, DXGI_FORMAT_R32G32_FLOAT, 0, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 },
-		{ "NORMAL", 0, DXGI_FORMAT_R32G32B32_FLOAT, 1, 0, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 },
-		{ "TANGENT", 0, DXGI_FORMAT_R32G32B32_FLOAT, 1, 12, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 },
-		{ "COLOR", 0, DXGI_FORMAT_B8G8R8A8_UNORM, 1, 24, D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA , 0 },
+		/* "Семантика" "Индекс"      "Формат атрибута"      "Слот" "Оффсет"				     "?"                       "?" */
+		{  "POSITION",    0,    DXGI_FORMAT_R32G32B32_FLOAT,  0,      0,    D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{  "TEXCOORD",    0,    DXGI_FORMAT_R32G32_FLOAT,     0,      12,   D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{  "NORMAL",      0,    DXGI_FORMAT_R32G32B32_FLOAT,  1,      0,    D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{  "TANGENT",     0,    DXGI_FORMAT_R32G32B32_FLOAT,  1,      12,   D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{  "COLOR",       0,    DXGI_FORMAT_B8G8R8A8_UNORM,   1,      24,   D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 	};
 }
 
 
+//! ===================================================   Pipeline State Object (PSO)   ===================================================
+/*
+	PSO задаёт конвейеру условия работы:
+	1. Интерпретация данных из буфера(ов) вершин (InputLayout);
+	2. Сигнатура параметров (какие дескрипторы к каким слотам шейдеров подключаются);
+	3. Используемые шейдеры (VS, DS, HS, GS, PS);
+	4. Настройки растеризации (FILL_MODE, CULL_MODE и т.д.);
+	5. Настройки блендера;
+	6. Настройки буфера глубин/трафарета;
+	7. Маска сэмплирования;
+	8. Топология отрисовки точек;
+	9. Количество render targets, отрисовываемых одновременно;
+	10. Формат RTV;
+	11. Формат DSV;
+	12. Настройки мультисэмлинга;																						(стр. 353 - 359) */
 void D3D12Engine::BuildPSO()
 {
 	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
@@ -325,10 +373,16 @@ void D3D12Engine::BuildPSO()
 }
 
 
+//! ========================================================   Строим  геометрию   ========================================================
+/*
+   В одном и том же буфере вершин находятся вершины для разных объектов. Сейчас атрибуты вершин захардкожены в 2 массивах. В 1-м содержатся
+атрибуты: позиция вершины, координата текстуры. Во 2-м вектор нормали, тангента, цвет вершины. Эти буферы подрубаются к конвейеру  через  2
+слота. Так же захардкожен буфер индексов.																								 */
 void D3D12Engine::BuildBoxGeometry()
 {
-	const UINT32 vertexNumber = 8;
-	std::array<SeparatedVertex, 13> verticesSplittedAttr =
+	/* В показательных целях имеем массив атрибутов для обоих слотов (массив цельных атрибутов), который можно подрубить к одному слоту. */
+	const UINT64 numVertices = 13;
+	std::array<SeparatedVertex, numVertices> verticesSplittedAttr =
 	{
 		/*=========1 слот (позиция вершины, кордината текстуры)=========*/  /*================2 слот (вектор нормали, тангента, цвет)================*/
 		// Куб
@@ -363,46 +417,51 @@ void D3D12Engine::BuildBoxGeometry()
 		2, 4, 3,			// Back
 		3, 4, 0				// Left
 	};
-	std::array<SeparatedVertex::PosTex, 13> verticesPosTex;
-	std::array<SeparatedVertex::NorTanCol, 13> verticesNorTanCol;
 
-	for (int i = 0; i < verticesSplittedAttr.size(); ++i)
+	/* Из массива цельных атрибутов формируем 2 массива с атрибутами. В 1 - позиция вершины, координата текстуры.  Во 2-м - вектор нормали,
+	тангента, цвет вершины.																												 */
+	std::array<SeparatedVertex::PosTex, numVertices> verticesPT;
+	std::array<SeparatedVertex::NorTanCol, numVertices> verticesNTC;
+
+	for (int i = 0; i < numVertices; ++i)
 	{
-		verticesPosTex[i] = verticesSplittedAttr[i].pos_tex;
-		verticesNorTanCol[i] = verticesSplittedAttr[i].nor_tan_col;
+		verticesPT[i] = verticesSplittedAttr[i].pos_tex;
+		verticesNTC[i] = verticesSplittedAttr[i].nor_tan_col;
 	}
-	const UINT iByteSize = (UINT)indices.size() * sizeof(std::uint16_t);
+	const UINT iByteSize = (UINT)indices.size() * sizeof(std::uint16_t);			// Размер индексного буфера
+	const UINT vByteSizePT = numVertices * sizeof(SeparatedVertex::PosTex);			// Размер буффера, подключаемого к слоту 1
+	const UINT vByteSizeNTC = numVertices * sizeof(SeparatedVertex::NorTanCol);		// Размер буффера, подключаемого к слоту 2
 
+	// Описываем геометрию меделей
 	m_boxGeometry = std::make_unique<MeshGeometry<2>>();
 	m_boxGeometry->Name = "Box";
 
-	const UINT vByteSizeSlot1 = verticesPosTex.size() * sizeof(SeparatedVertex::PosTex);		// Размер буффера, подключаемого к слоту 1
-	const UINT vByteSizeSlot2 = verticesNorTanCol.size() * sizeof(SeparatedVertex::NorTanCol);	// Размер буффера, подключаемого к слоту 2
-
-	// Описываем буферы вершин (Stride, Size). Эти данные используются для генерации вьюх на буферы при подключении их к GPU-pipeline.
-	m_boxGeometry->vbMetrics[0].VertexBufferByteSize = vByteSizeSlot1;
+	m_boxGeometry->vbMetrics[0].VertexBufferByteSize = vByteSizePT;					// ByteSize и Stride буфера вершин для 1 слота
 	m_boxGeometry->vbMetrics[0].VertexByteStride = sizeof(SeparatedVertex::PosTex);
-	m_boxGeometry->vbMetrics[1].VertexBufferByteSize = vByteSizeSlot2;
+	m_boxGeometry->vbMetrics[1].VertexBufferByteSize = vByteSizeNTC;				// ByteSize и Stride буфера вершин для 2 слота
 	m_boxGeometry->vbMetrics[1].VertexByteStride = sizeof(SeparatedVertex::NorTanCol);
 
-	// Сохраняем буферы вершин в памяти на стороне CPU
-	ThrowIfFailed(D3DCreateBlob(vByteSizeSlot1, &m_boxGeometry->VBufferCPU[0]));
-	ThrowIfFailed(D3DCreateBlob(vByteSizeSlot2, &m_boxGeometry->VBufferCPU[1]));
-	CopyMemory(m_boxGeometry->VBufferCPU[0]->GetBufferPointer(), verticesPosTex.data(), vByteSizeSlot1);
-	CopyMemory(m_boxGeometry->VBufferCPU[1]->GetBufferPointer(), verticesNorTanCol.data(), vByteSizeSlot2);
+	m_boxGeometry->IndexFormat = DXGI_FORMAT_R16_UINT;
+	m_boxGeometry->IndexBufferByteSize = iByteSize;									// ByteSize индексного буфера
 
+	// Сохраняем буферы вершин и индексов в памяти на стороне CPU
+	ThrowIfFailed(D3DCreateBlob(vByteSizePT, &m_boxGeometry->VBufferCPU[0]));		// Резервируем место в памяти
+	ThrowIfFailed(D3DCreateBlob(vByteSizeNTC, &m_boxGeometry->VBufferCPU[1]));
 	ThrowIfFailed(D3DCreateBlob(iByteSize, &m_boxGeometry->IndexBufferCPU));
+
+	CopyMemory(m_boxGeometry->VBufferCPU[0]->GetBufferPointer(), verticesPT.data(), vByteSizePT);	// Заполняем его данными
+	CopyMemory(m_boxGeometry->VBufferCPU[1]->GetBufferPointer(), verticesNTC.data(), vByteSizeNTC);
 	CopyMemory(m_boxGeometry->IndexBufferCPU->GetBufferPointer(), indices.data(), iByteSize);
 
-	// Создаём в GPU буферы вершин (сколько слотов - столько буферов) и индексный буфер. Копируем туда данные из соответствующих массивов
-	m_boxGeometry->VBufferGPU[0] = Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), verticesPosTex.data(), vByteSizeSlot1, m_boxGeometry->VertexBufferUploader);
-	m_boxGeometry->VBufferGPU[1] = Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), verticesNorTanCol.data(), vByteSizeSlot2, m_boxGeometry->VertexBufferUploader);
-	m_boxGeometry->IndexBufferGPU = Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), indices.data(), iByteSize, m_boxGeometry->IndexBufferUploader);
+	/* Создаём в GPU буферы вершин (по количеству слотов) и индексный буфер. Копируем туда данные из соответствующих массивов.			 */
+	m_boxGeometry->VBufferGPU[0] = 
+		Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), verticesPT.data(), vByteSizePT, m_boxGeometry->VertexBufferUploader);
+	m_boxGeometry->VBufferGPU[1] = 
+		Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), verticesNTC.data(), vByteSizeNTC, m_boxGeometry->VertexBufferUploader);
+	m_boxGeometry->IndexBufferGPU =
+		Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), indices.data(), iByteSize, m_boxGeometry->IndexBufferUploader);
 
-	// Описываем буфер индексов. Эти данные используются для генерации вьюх на индексный буфер при подключении их к GPU-pipeline.
-	m_boxGeometry->IndexFormat = DXGI_FORMAT_R16_UINT;
-	m_boxGeometry->IndexBufferByteSize = iByteSize;
-
+	/* Описываем топологию объектов в буферах вершин и индексном буфере */
 	SubmeshGeometry submesh;
 	submesh.IndexCount = 36;
 	submesh.StartIndexLocation = 0;
