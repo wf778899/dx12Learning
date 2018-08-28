@@ -68,7 +68,8 @@ void D3D12Engine::Update(const GameTimer & timer)
 	constants.gTime = timer.TotalTime();
 	m_constantBuffer->CopyData(1, constants);
 
-	m_constantBuffer2->CopyData(0, constants.gTime*2);////////////////////////
+	m_constantBuffer2->CopyData(0, constants.gTime);////////////////////////
+	m_constantBuffer2->CopyData(1, constants.gTime);////////////////////////
 }
 
 void D3D12Engine::Draw(const GameTimer & timer)
@@ -108,7 +109,7 @@ void D3D12Engine::Draw(const GameTimer & timer)
 
 	// Рисуем первый меш, используя первый дескриптор
 	m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["box"].IndexCount, 1, m_boxGeometry->DrawArgs["box"].StartIndexLocation, m_boxGeometry->DrawArgs["box"].BaseVertexLocation, 0);
-
+	
 	// Получаем второй дескриптор из кучи, сдвигая Handle. Он указывает на второй элемент буфера констант. Рисуем второй меш, установив
 	// сдвинутый дескриптор заново (SetGraphicsRootDescriptorTable()).
 	cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize);
@@ -171,7 +172,7 @@ void D3D12Engine::CreateCbvDescriptorHeaps()
 {
 	// Создаём кучу из 2 дескрипторов для константного буфера. Каждый дескриптор будет использован для отрисовки соотв. объекта сцены.
 	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
-	cbvHeapDesc.NumDescriptors = 3;
+	cbvHeapDesc.NumDescriptors = 4;
 	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	cbvHeapDesc.NodeMask = 0;
@@ -188,7 +189,7 @@ void D3D12Engine::BuildConstantBuffers()
 	/* Создаём константный буфер, состоящий из 2 элементов. Для этого используем UploadBuffer - он просто инстанцирует в памяти GPU буфер и
 	предоставляет метод CopyData( индекс, данные ). Т.о. можно легко обновить буфер в любое время.										 */
 	m_constantBuffer = std::make_unique<UploadBuffer<Constants>>(m_device.Get(), 2, true);
-	m_constantBuffer2 = std::make_unique<UploadBuffer<float>>(m_device.Get(), 1, true);////////////////////////
+	m_constantBuffer2 = std::make_unique<UploadBuffer<float>>(m_device.Get(), 2, true);////////////////////////
 
 	/* Размер одного элемента буфера вычислен при его создании. Он нужен для инициализации дескрипторов CBV. */
 	const UINT cbElemByteSize = m_constantBuffer->elementByteSize();
@@ -214,6 +215,10 @@ void D3D12Engine::BuildConstantBuffers()
 	cbvDesc.SizeInBytes = cbElemByteSize2; /////////////////////
 	cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize); /////////////////////
 	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle); /////////////////////
+
+	cbvDesc.BufferLocation += cbElemByteSize2; /////////////////////
+	cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize); /////////////////////
+	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle); /////////////////////
 }
 
 
@@ -226,7 +231,7 @@ void D3D12Engine::BuildRootSignature()
 	rootParameter[0].InitAsDescriptorTable(1, &cbvTable);
 
 	CD3DX12_DESCRIPTOR_RANGE cbvTable2;
-	cbvTable2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);
+	cbvTable2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 1);
 	rootParameter[1].InitAsDescriptorTable(1, &cbvTable2);
 
 	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(2, rootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);

@@ -10,6 +10,11 @@ cbuffer cbPerFrame : register(b1)
 	float gTime2;
 }
 
+cbuffer cbPerFrame2 : register(b2)
+{
+	float gFactor;
+}
+
 struct VertexIn
 {
 	float3 PosL : POSITION;
