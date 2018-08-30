@@ -21,7 +21,8 @@ bool D3D12Engine::Initialize()
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
 	BuildBoxGeometry();
-
+	BuildGeometry();
+	BuildFrameResources();
 	CreateCbvDescriptorHeaps();
 	BuildConstantBuffers();
 	BuildPSO();
@@ -439,6 +440,7 @@ void D3D12Engine::BuildBoxGeometry()
 	m_boxGeometry = std::make_unique<MeshGeometry<2>>();
 	m_boxGeometry->Name = "Box";
 
+	/* Используется при вычислении VertexBufferView */
 	m_boxGeometry->vbMetrics[0].VertexBufferByteSize = vByteSizePT;					// ByteSize и Stride буфера вершин для 1 слота
 	m_boxGeometry->vbMetrics[0].VertexByteStride = sizeof(SeparatedVertex::PosTex);
 	m_boxGeometry->vbMetrics[1].VertexBufferByteSize = vByteSizeNTC;				// ByteSize и Stride буфера вершин для 2 слота
@@ -475,6 +477,62 @@ void D3D12Engine::BuildBoxGeometry()
 	submesh.StartIndexLocation = 36;
 	submesh.BaseVertexLocation = 8;
 	m_boxGeometry->DrawArgs["pyramide"] = submesh;
+}
+
+void D3D12Engine::BuildGeometry()
+{
+	const UINT64 numVertices = 13;
+
+	std::array<Vertex, numVertices> vertices =
+	{
+		/*===========(позиция вершины)==============(цвет)==========*/
+		// Куб
+		Vertex(XMFLOAT3(-1.0f,-1.0f,-1.0f), XMCOLOR(Colors::White)), Vertex(XMFLOAT3(-1.0f,+1.0f,-1.0f), XMCOLOR(Colors::Black)),
+		Vertex(XMFLOAT3(+1.0f,+1.0f,-1.0f), XMCOLOR(Colors::Red)), Vertex(XMFLOAT3(+1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Green)),
+		Vertex(XMFLOAT3(-1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Blue)), Vertex(XMFLOAT3(-1.0f,+1.0f,+1.0f), XMCOLOR(Colors::Yellow)),
+		Vertex(XMFLOAT3(+1.0f,+1.0f,+1.0f), XMCOLOR(Colors::Cyan)), Vertex(XMFLOAT3(+1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Magenta)),
+		// Пирамида
+		Vertex(XMFLOAT3(-1.0f,-1.0f,-1.0f), XMCOLOR(Colors::White)),
+		Vertex(XMFLOAT3(+1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Black)),
+		Vertex(XMFLOAT3(+1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Red)),
+		Vertex(XMFLOAT3(-1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Green)),
+		Vertex(XMFLOAT3(0.0f,+2.0f, 0.0f), XMCOLOR(Colors::Blue)),
+	};
+
+	std::array<std::uint16_t, 54> indices =
+	{
+		// Куб
+		/*=== Front ======|====== Back =======|====== Left =======|====== Right ======|======= Top =======|==== Bottom ====*/
+		0, 1, 2, 0, 2, 3,   4, 6, 5, 4, 7, 6,   4, 5, 1, 4, 1, 0,   3, 2, 6, 3, 6, 7,   1, 5, 6, 1, 6, 2,   4, 0, 3, 4, 3, 7,
+		// Пирамида
+		/*=== Bottom =====|= Front ==|= Right ==|= Back ===|= Left*/
+		1, 3, 0, 1, 2, 3,	0, 4, 1,   1, 4, 2,   2, 4, 3,   3, 4, 0
+	};
+
+	UINT vByteSize = vertices.size() * sizeof(Vertex);
+	UINT iByteSize = indices.size() * sizeof(std::uint16_t);
+
+	std::unique_ptr<MeshGeometry<1>> shapes = std::make_unique<MeshGeometry<1>>();
+	shapes->Name = "Primitives";
+	
+	shapes->vbMetrics->VertexBufferByteSize = vByteSize;
+	shapes->vbMetrics->VertexByteStride = sizeof(Vertex);
+	shapes->IndexBufferByteSize = iByteSize;
+	shapes->IndexFormat = DXGI_FORMAT_R16_UINT;
+
+	ThrowIfFailed(D3DCreateBlob(vByteSize, &shapes->VBufferCPU[0]));
+	ThrowIfFailed(D3DCreateBlob(iByteSize, &shapes->IndexBufferCPU));
+	CopyMemory(shapes->VBufferCPU[0]->GetBufferPointer(), vertices.data(), vByteSize);
+	CopyMemory(shapes->IndexBufferCPU->GetBufferPointer(), indices.data(), iByteSize);
+
+	m_geometries[shapes->Name] = std::move(shapes);
+	return;
+}
+
+void D3D12Engine::BuildRenderItems()
+{
+
+
 }
 
 void D3D12Engine::BuildFrameResources()

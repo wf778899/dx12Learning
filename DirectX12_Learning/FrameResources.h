@@ -1,6 +1,5 @@
 #pragma once
 
-#include "Helpers/MathHelper.h"
 #include "Helpers/Utilites.h"
 #include "UploadBuffer.h"
 
@@ -12,8 +11,12 @@ struct Constants
 
 struct Vertex
 {
+	Vertex(XMFLOAT3 pos, XMCOLOR Col)
+		: Position(pos)
+		, Color(Col) 
+	{}
 	XMFLOAT3 Position;
-	XMFLOAT4 Color;
+	XMCOLOR Color;
 };
 
 struct SeparatedVertex {

@@ -27,9 +27,12 @@ private:
 	void BuildShadersAndInputLayout();
 	void BuildPSO();
 	void BuildBoxGeometry();
+	void BuildGeometry();
+	void BuildRenderItems();
 	void BuildFrameResources();
 
-	std::vector<std::unique_ptr<FrameResources>> m_frameResources;
+	std::vector<std::unique_ptr<RenderItem>> m_allRenderItems;		// Массив моделей для рендеринга
+	std::vector<std::unique_ptr<FrameResources>> m_frameResources;	// Массив покадровых ресурсов
 	UINT m_currFrameIndex = 0;
 	FrameResources *m_currFrame = nullptr;
 
@@ -39,6 +42,8 @@ private:
 	ComPtr<ID3DBlob> m_vsByteCode = nullptr;
 	ComPtr<ID3DBlob> m_psByteCode = nullptr;
 	std::unique_ptr<MeshGeometry<2>> m_boxGeometry = nullptr;
+	std::unordered_map<std::string, std::unique_ptr<MeshGeometry<1>>> m_geometries;
+
 	std::unique_ptr<UploadBuffer<Constants>> m_constant_po_buf = nullptr;	// Константы пообъектные
 	std::unique_ptr<UploadBuffer<float>> m_constant_pf_buf = nullptr;		// Константы покадровые
 
