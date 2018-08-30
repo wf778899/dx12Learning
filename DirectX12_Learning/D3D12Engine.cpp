@@ -1,6 +1,8 @@
 #include "stdafx.h"
 #include "D3D12Engine.h"
 
+const UINT g_numFrameResources = 3;
+
 //! ============================================================  Конструктор  ============================================================
 D3D12Engine::D3D12Engine(HINSTANCE hInstance) : D3D12Base(hInstance) {}
 
@@ -16,12 +18,13 @@ bool D3D12Engine::Initialize()
 		return false;
 
 	ThrowIfFailed(m_cmdList->Reset(m_cmdAllocator.Get(), nullptr));
-	CreateCbvDescriptorHeaps();
-	BuildConstantBuffers();
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
-	BuildPSO();
 	BuildBoxGeometry();
+
+	CreateCbvDescriptorHeaps();
+	BuildConstantBuffers();
+	BuildPSO();
 	ThrowIfFailed(m_cmdList->Close());
 	ID3D12CommandList *cmdLists[] = { m_cmdList.Get() };
 	m_cmdQueue->ExecuteCommandLists(_countof(cmdLists), cmdLists);
@@ -472,4 +475,12 @@ void D3D12Engine::BuildBoxGeometry()
 	submesh.StartIndexLocation = 36;
 	submesh.BaseVertexLocation = 8;
 	m_boxGeometry->DrawArgs["pyramide"] = submesh;
+}
+
+void D3D12Engine::BuildFrameResources()
+{
+	for (int i = 0; i < g_numFrameResources; ++i)
+	{
+		m_frameResources.push_back(std::make_unique<FrameResources>(m_device.Get(), 1, 6));
+	}
 }

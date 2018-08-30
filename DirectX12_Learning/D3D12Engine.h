@@ -27,6 +27,11 @@ private:
 	void BuildShadersAndInputLayout();
 	void BuildPSO();
 	void BuildBoxGeometry();
+	void BuildFrameResources();
+
+	std::vector<std::unique_ptr<FrameResources>> m_frameResources;
+	UINT m_currFrameIndex = 0;
+	FrameResources *m_currFrame = nullptr;
 
 	ComPtr<ID3D12DescriptorHeap> m_CBV_heap = nullptr;
 	ComPtr<ID3D12RootSignature> m_rootSignature = nullptr;
