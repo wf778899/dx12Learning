@@ -22,7 +22,9 @@ private:
 	virtual void OnMouseMove(WPARAM btnState, int x, int y);
 
 	void CreateCbvDescriptorHeaps();
+	void CreateCBVdescriptorHeaps();
 	void BuildConstantBuffers();
+	void Build_ConstantBuffers();
 	void BuildRootSignature();
 	void BuildShadersAndInputLayout();
 	void BuildPSO();
@@ -31,12 +33,15 @@ private:
 	void BuildRenderItems();
 	void BuildFrameResources();
 
-	std::vector<std::unique_ptr<RenderItem>> m_allRenderItems;		// Массив моделей для рендеринга
+	std::vector<std::unique_ptr<RenderItem>> m_allRenderItems;		// Массив всех моделей для рендеринга
+	std::vector<RenderItem*> m_opaqueRenderItems;					// Массив непрозрачных моделей (подмножество всех моделей)
 	std::vector<std::unique_ptr<FrameResources>> m_frameResources;	// Массив покадровых ресурсов
 	UINT m_currFrameIndex = 0;
+	UINT m_passCBVoffset = 0;		// Начало области дескрипторов на покадровые константы
 	FrameResources *m_currFrame = nullptr;
 
 	ComPtr<ID3D12DescriptorHeap> m_CBV_heap = nullptr;
+	ComPtr<ID3D12DescriptorHeap> m_cbvHeap = nullptr;
 	ComPtr<ID3D12RootSignature> m_rootSignature = nullptr;
 	ComPtr<ID3D12PipelineState> m_pipelineState = nullptr;
 	ComPtr<ID3DBlob> m_vsByteCode = nullptr;

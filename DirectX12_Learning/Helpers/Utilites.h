@@ -824,7 +824,7 @@ struct RenderItem
 	/* Если константы у модели поменяются (н-р, worldMatrix), их нужно записать в буфера констант для всех фрэйм-ресурсов. Поле durtyFrames
 	показывает, сколько фреймов впереди должны обновить константные буфера для данной модели.											 */
 	UINT8 durtyFrames = 0;
-	MeshGeometry<2> *geometry = nullptr;
+	MeshGeometry<1> *geometry = nullptr;
 };
 
 

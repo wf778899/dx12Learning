@@ -22,8 +22,10 @@ bool D3D12Engine::Initialize()
 	BuildShadersAndInputLayout();
 	BuildBoxGeometry();
 	BuildGeometry();
+	BuildRenderItems();
 	BuildFrameResources();
 	CreateCbvDescriptorHeaps();
+	CreateCBVdescriptorHeaps();
 	BuildConstantBuffers();
 	BuildPSO();
 	ThrowIfFailed(m_cmdList->Close());
@@ -202,6 +204,21 @@ void D3D12Engine::CreateCbvDescriptorHeaps()
 	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	cbvHeapDesc.NodeMask = 0;
 	ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_CBV_heap)));
+}
+
+
+//! ======================================================   Куча дескрипторов CBV   ======================================================
+void D3D12Engine::CreateCBVdescriptorHeaps()
+{
+	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
+
+	m_passCBVoffset = m_allRenderItems.size() * g_numFrameResources;	// Сохраняем смещение покадровых дескрипторов
+
+	cbvHeapDesc.NumDescriptors = (m_allRenderItems.size() + 1) * g_numFrameResources;
+	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
+	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
+	cbvHeapDesc.NodeMask = 0;
+	ThrowIfFailed(m_device->CreateDescriptorHeap(&cbvHeapDesc, IID_PPV_ARGS(&m_cbvHeap)));
 }
 
 
@@ -479,6 +496,11 @@ void D3D12Engine::BuildBoxGeometry()
 	m_boxGeometry->DrawArgs["pyramide"] = submesh;
 }
 
+
+//! ========================================================   Строим  геометрию   ========================================================
+/*
+   Вся геометрия хранится MeshGeometry.  Это буфера вершин и индексов, сохраняемые и со стороны CPU, и GPU;  это дескрипторы на эти буфера;
+это топология отдельных моделей в этих буферах. */
 void D3D12Engine::BuildGeometry()
 {
 	const UINT64 numVertices = 13;
@@ -512,6 +534,7 @@ void D3D12Engine::BuildGeometry()
 	UINT vByteSize = vertices.size() * sizeof(Vertex);
 	UINT iByteSize = indices.size() * sizeof(std::uint16_t);
 
+	/* Строим геометрию */
 	std::unique_ptr<MeshGeometry<1>> shapes = std::make_unique<MeshGeometry<1>>();
 	shapes->Name = "Primitives";
 	
@@ -520,25 +543,80 @@ void D3D12Engine::BuildGeometry()
 	shapes->IndexBufferByteSize = iByteSize;
 	shapes->IndexFormat = DXGI_FORMAT_R16_UINT;
 
+	/* Сохраняем геометрию на стороне CPU */
 	ThrowIfFailed(D3DCreateBlob(vByteSize, &shapes->VBufferCPU[0]));
 	ThrowIfFailed(D3DCreateBlob(iByteSize, &shapes->IndexBufferCPU));
 	CopyMemory(shapes->VBufferCPU[0]->GetBufferPointer(), vertices.data(), vByteSize);
 	CopyMemory(shapes->IndexBufferCPU->GetBufferPointer(), indices.data(), iByteSize);
 
+	/* Строим буферы в GPU, сохраняем в них геометрию */
+	shapes->VBufferGPU[0] = 
+		Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), vertices.data(), vByteSize, shapes->VertexBufferUploader);
+	shapes->IndexBufferGPU =
+		Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), indices.data(), iByteSize, shapes->IndexBufferUploader);
+
+	/* Расположение моделей в буферах */
+	SubmeshGeometry submesh;
+	submesh.IndexCount = 36;
+	submesh.StartIndexLocation = 0;
+	submesh.BaseVertexLocation = 0;
+	shapes->DrawArgs["box"] = submesh;
+	submesh.IndexCount = 18;
+	submesh.StartIndexLocation = 36;
+	submesh.BaseVertexLocation = 8;
+	shapes->DrawArgs["pyramide"] = submesh;
+
 	m_geometries[shapes->Name] = std::move(shapes);
 	return;
 }
 
+
+//! ========================================================   Формируем  модели   ========================================================
+/*
+   Вся геометрия была уже сформирована в BuildGeometry(). Модель хранит адрес куска соответствующей геометрии, указатель на общую геометрию
+характерную для каждого объекта матрицу World. И ещё индекс константы буфера констант, куда она эту матрицу  запишет при изменении.  Буфера
+констант (пообъектных и покадровых) хранятся в циклическом массиве FrameResources (для 3 фреймов).						(стр. 394 - 396) */
 void D3D12Engine::BuildRenderItems()
 {
+	auto boxItem = std::make_unique<RenderItem>(g_numFrameResources);
+	auto pyramideItem = std::make_unique<RenderItem>(g_numFrameResources);
 
+	XMStoreFloat4x4(&boxItem->worldMatrix, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
+	boxItem->geometry = m_geometries["Primitives"].get();
+	boxItem->primitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	boxItem->indexCount = boxItem->geometry->DrawArgs["box"].IndexCount;
+	boxItem->startIndex = boxItem->geometry->DrawArgs["box"].StartIndexLocation;
+	boxItem->baseVertex = boxItem->geometry->DrawArgs["box"].BaseVertexLocation;
+	boxItem->objectCB_index = 0;
+	m_allRenderItems.push_back(std::move(boxItem));
+
+	pyramideItem->worldMatrix = MathHelper::Identity4x4();
+	pyramideItem->geometry = m_geometries["Primitives"].get();
+	pyramideItem->primitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+	pyramideItem->indexCount = pyramideItem->geometry->DrawArgs["pyramide"].IndexCount;
+	pyramideItem->startIndex = pyramideItem->geometry->DrawArgs["pyramide"].StartIndexLocation;
+	pyramideItem->baseVertex = pyramideItem->geometry->DrawArgs["pyramide"].BaseVertexLocation;
+	pyramideItem->objectCB_index = 1;
+	m_allRenderItems.push_back(std::move(pyramideItem));
+
+	/* Все модели непрозрачные */
+	for (auto &item : m_allRenderItems)
+		m_opaqueRenderItems.push_back(item.get());
 
 }
 
+
+//! ==========================================================   Фрэйм-ресурсы   ==========================================================
+/*
+   Формируем циклический массив фрэйм-ресурсов, используемый для эффективной загрузки GPU. В то время, как  GPU выполняет список команд для
+кадра N, используя при этом константы для этого кадра, CPU может не ждать и готовить константы и список команд для N+1 кадра.  Массив  на 3
+элемента обеспечивает GPU данными на 3 кадра вперёд, если CPU работает быстрее.	
+   Здесь каждый фрэйм ресурс имеет 2 буфера констант: пообъектных и покадровых. И те и другие валидны в течение  только одного  кадра, т.о.
+имеем в памяти GPU 6 константных буферов.																				(стр. 389 - 394) */
 void D3D12Engine::BuildFrameResources()
 {
 	for (int i = 0; i < g_numFrameResources; ++i)
 	{
-		m_frameResources.push_back(std::make_unique<FrameResources>(m_device.Get(), 1, 6));
+		m_frameResources.push_back(std::make_unique<FrameResources>(m_device.Get(), 1, m_allRenderItems.size()));
 	}
 }
