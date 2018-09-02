@@ -26,6 +26,7 @@ bool D3D12Engine::Initialize()
 	BuildFrameResources();
 	CreateCbvDescriptorHeaps();
 	CreateCBVdescriptorHeaps();
+	Build_ConstantBuffers();
 	BuildConstantBuffers();
 	BuildPSO();
 	ThrowIfFailed(m_cmdList->Close());
@@ -50,18 +51,17 @@ void D3D12Engine::OnResize()
    Здесь каждый кадр меняем матрицы объектов и пишем их в константные буферы.															 */
 void D3D12Engine::Update(const GameTimer & timer)
 {
+	UpdateCamera(timer);
+
+	m_currFrameIndex = (m_currFrameIndex + 1) % g_numFrameResources;
+	m_currFrame = m_frameResources[m_currFrameIndex].get();
+
+	UpdateObjectCB(timer);
+
+
 	Constants constants;
 
-	float x = m_radius * sinf(m_phi) * cos(m_theta);
-	float z = m_radius * sinf(m_phi) * sin(m_theta);
-	float y = m_radius * cosf(m_phi);
-
-	/* Строим View-матрицу по полученным данным, сохраняем её.																			 */
-	XMVECTOR pos = XMVectorSet(x, y, z, 1.0f);
-	XMVECTOR target = XMVectorZero();
-	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
-	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
-	XMStoreFloat4x4(&m_view, view);
+	XMMATRIX view = XMLoadFloat4x4(&m_view);
 
 	/* Получаем Projection-матрицу (получена ранее, в инициализирующем вызове OnResize()).												 */
 	XMMATRIX proj = XMLoadFloat4x4(&m_proj);
@@ -173,22 +173,56 @@ void D3D12Engine::OnMouseUp(WPARAM btnState, int x, int y)
 void D3D12Engine::OnMouseMove(WPARAM btnState, int x, int y)
 {
 	if ((btnState & MK_LBUTTON) != 0) {
-		float dx = XMConvertToRadians(0.25f * static_cast<float>(x - m_lastMousePos.x));
-		float dy = XMConvertToRadians(0.25f * static_cast<float>(y - m_lastMousePos.y));
+		float dx = XMConvertToRadians(0.5f * static_cast<float>(x - m_lastMousePos.x));
+		float dy = XMConvertToRadians(0.5f * static_cast<float>(y - m_lastMousePos.y));
 
 		m_theta += dx;
 		m_phi += dy;
 		m_phi = MathHelper::Clamp(m_phi, 0.1f, MathHelper::Pi - 0.1f);
 	}
 	else if ((btnState & MK_RBUTTON) != 0) {
-		float dx = 0.005f * static_cast<float>(x - m_lastMousePos.x);
-		float dy = 0.005f * static_cast<float>(y - m_lastMousePos.y);
+		float dx = 0.05f * static_cast<float>(x - m_lastMousePos.x);
+		float dy = 0.05f * static_cast<float>(y - m_lastMousePos.y);
 
 		m_radius += dx - dy;
-		m_radius = MathHelper::Clamp(m_radius, 3.0f, 15.0f);
+		m_radius = MathHelper::Clamp(m_radius, 5.0f, 150.0f);
 	}
 	m_lastMousePos.x = x;
 	m_lastMousePos.y = y;
+}
+
+
+
+void D3D12Engine::UpdateCamera(const GameTimer & timer)
+{
+	float x = m_radius * sinf(m_phi) * cos(m_theta);
+	float z = m_radius * sinf(m_phi) * sin(m_theta);
+	float y = m_radius * cosf(m_phi);
+
+	/* Строим View-матрицу по полученным данным, сохраняем её.																			 */
+	XMVECTOR pos = XMVectorSet(x, y, z, 1.0f);
+	XMVECTOR target = XMVectorZero();
+	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
+	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
+	XMStoreFloat4x4(&m_view, view);
+}
+
+
+void D3D12Engine::UpdateObjectCB(const GameTimer & timer)
+{
+	auto objectCB = m_currFrame->ObjectCB.get();
+	for (auto &e : m_allRenderItems)
+	{
+		// Обновляем объектные константы (для всех следующих фреймов) только если надо
+		if (e->durtyFrames > 0)
+		{
+			XMMATRIX world = XMLoadFloat4x4(&e->worldMatrix);
+			ObjectConstants constant;
+			XMStoreFloat4x4(&constant.world, world);
+			objectCB->CopyData(e->objectCB_index, constant);
+			e->durtyFrames--;
+		}
+	}
 }
 
 
@@ -210,10 +244,9 @@ void D3D12Engine::CreateCbvDescriptorHeaps()
 //! ======================================================   Куча дескрипторов CBV   ======================================================
 void D3D12Engine::CreateCBVdescriptorHeaps()
 {
-	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
-
 	m_passCBVoffset = m_allRenderItems.size() * g_numFrameResources;	// Сохраняем смещение покадровых дескрипторов
 
+	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
 	cbvHeapDesc.NumDescriptors = (m_allRenderItems.size() + 1) * g_numFrameResources;
 	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
@@ -265,6 +298,41 @@ void D3D12Engine::BuildConstantBuffers()
 	cbvDesc.BufferLocation += cb_pf_ElemByteSize;
 	cbvDesc.SizeInBytes = cb_pf_ElemByteSize;
 	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);	// Заполняем четвёртый дескриптор (это общий)
+}
+
+
+//! =============================================   Мапим  дескрипторы  на  буфера констант   =============================================
+/*
+   Привязываем дескрипторы кучи к константам для каждого фрейм-ресурса.											(стр. 337 - 339)		 */
+void D3D12Engine::Build_ConstantBuffers()
+{
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvObjectDescriptorHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart());
+	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvPassDescriptorHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart());
+	cbvPassDescriptorHandle.Offset(m_passCBVoffset, m_CBV_SRV_UAV_descriptorSize);
+
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvObjectDesc;
+	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvPassDesc;
+
+	for (int i = 0; i < g_numFrameResources; ++i)
+	{
+		D3D12_GPU_VIRTUAL_ADDRESS objectCB_va = m_frameResources[i]->ObjectCB->Resource()->GetGPUVirtualAddress();
+		D3D12_GPU_VIRTUAL_ADDRESS passCB_va = m_frameResources[i]->PassCB->Resource()->GetGPUVirtualAddress();
+		UINT objectCB_elemSize = m_frameResources[i]->ObjectCB->elementByteSize();
+		UINT passCB_elemSize = m_frameResources[i]->PassCB->elementByteSize();
+		for (int i = 0; i < m_allRenderItems.size(); ++i)
+		{
+			cbvObjectDesc.BufferLocation = objectCB_va;
+			cbvObjectDesc.SizeInBytes = objectCB_elemSize;
+			m_device->CreateConstantBufferView(&cbvObjectDesc, cbvObjectDescriptorHandle);
+			cbvObjectDesc.BufferLocation += objectCB_elemSize;
+			cbvObjectDescriptorHandle.Offset(m_CBV_SRV_UAV_descriptorSize);
+		}
+		cbvPassDesc.BufferLocation = passCB_va;
+		cbvPassDesc.SizeInBytes = passCB_elemSize;
+		m_device->CreateConstantBufferView(&cbvPassDesc, cbvPassDescriptorHandle);
+		cbvPassDesc.BufferLocation += passCB_elemSize;
+		cbvPassDescriptorHandle.Offset(m_CBV_SRV_UAV_descriptorSize);
+	}
 }
 
 
@@ -574,7 +642,7 @@ void D3D12Engine::BuildGeometry()
 //! ========================================================   Формируем  модели   ========================================================
 /*
    Вся геометрия была уже сформирована в BuildGeometry(). Модель хранит адрес куска соответствующей геометрии, указатель на общую геометрию
-характерную для каждого объекта матрицу World. И ещё индекс константы буфера констант, куда она эту матрицу  запишет при изменении.  Буфера
+и характерную для каждого объекта матрицу World. И ещё индекс константы буфера констант, куда она эту матрицу запишет при изменении. Буфера
 констант (пообъектных и покадровых) хранятся в циклическом массиве FrameResources (для 3 фреймов).						(стр. 394 - 396) */
 void D3D12Engine::BuildRenderItems()
 {

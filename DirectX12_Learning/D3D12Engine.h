@@ -21,6 +21,9 @@ private:
 	virtual void OnMouseUp(WPARAM btnState, int x, int y);
 	virtual void OnMouseMove(WPARAM btnState, int x, int y);
 
+	void UpdateCamera(const GameTimer &timer);
+	void UpdateObjectCB(const GameTimer &timer);
+
 	void CreateCbvDescriptorHeaps();
 	void CreateCBVdescriptorHeaps();
 	void BuildConstantBuffers();
@@ -41,7 +44,7 @@ private:
 	FrameResources *m_currFrame = nullptr;
 
 	ComPtr<ID3D12DescriptorHeap> m_CBV_heap = nullptr;
-	ComPtr<ID3D12DescriptorHeap> m_cbvHeap = nullptr;
+	ComPtr<ID3D12DescriptorHeap> m_cbvHeap = nullptr;			// Новая куча дескрипторов
 	ComPtr<ID3D12RootSignature> m_rootSignature = nullptr;
 	ComPtr<ID3D12PipelineState> m_pipelineState = nullptr;
 	ComPtr<ID3DBlob> m_vsByteCode = nullptr;
