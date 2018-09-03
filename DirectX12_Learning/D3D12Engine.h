@@ -23,6 +23,7 @@ private:
 
 	void UpdateCamera(const GameTimer &timer);
 	void UpdateObjectCB(const GameTimer &timer);
+	void UpdatePassCB(const GameTimer &timer);
 
 	void CreateCbvDescriptorHeaps();
 	void CreateCBVdescriptorHeaps();
@@ -41,7 +42,10 @@ private:
 	std::vector<std::unique_ptr<FrameResources>> m_frameResources;	// Массив покадровых ресурсов
 	UINT m_currFrameIndex = 0;
 	UINT m_passCBVoffset = 0;		// Начало области дескрипторов на покадровые константы
+
 	FrameResources *m_currFrame = nullptr;
+
+	PassConstants m_passConstant;
 
 	ComPtr<ID3D12DescriptorHeap> m_CBV_heap = nullptr;
 	ComPtr<ID3D12DescriptorHeap> m_cbvHeap = nullptr;			// Новая куча дескрипторов
@@ -60,10 +64,11 @@ private:
 	XMFLOAT4X4 m_world = MathHelper::Identity4x4();
 	XMFLOAT4X4 m_view = MathHelper::Identity4x4();
 	XMFLOAT4X4 m_proj = MathHelper::Identity4x4();
-
+	XMFLOAT3 m_eyePos = { 0.0f, 0.0f, 0.0f };
 	POINT m_lastMousePos;
 	float m_theta = 1.5f * XM_PI;
-	float m_phi = XM_PIDIV4;
-	float m_radius = 5.0f;
+	float m_phi = 0.2f * XM_PI;
+	float m_radius = 15.0f;
+	bool m_wireFrame = false;
 };
 

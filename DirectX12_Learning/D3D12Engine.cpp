@@ -57,7 +57,7 @@ void D3D12Engine::Update(const GameTimer & timer)
 	m_currFrame = m_frameResources[m_currFrameIndex].get();
 
 	UpdateObjectCB(timer);
-
+	UpdatePassCB(timer);
 
 	Constants constants;
 
@@ -192,15 +192,15 @@ void D3D12Engine::OnMouseMove(WPARAM btnState, int x, int y)
 }
 
 
-
+//! ========================================================   Обновляем  камеру   ========================================================
 void D3D12Engine::UpdateCamera(const GameTimer & timer)
 {
-	float x = m_radius * sinf(m_phi) * cos(m_theta);
-	float z = m_radius * sinf(m_phi) * sin(m_theta);
-	float y = m_radius * cosf(m_phi);
+	m_eyePos.x = m_radius * sinf(m_phi) * cos(m_theta);
+	m_eyePos.z = m_radius * sinf(m_phi) * sin(m_theta);
+	m_eyePos.y = m_radius * cosf(m_phi);
 
-	/* Строим View-матрицу по полученным данным, сохраняем её.																			 */
-	XMVECTOR pos = XMVectorSet(x, y, z, 1.0f);
+	/* Строим View-матрицу по полученным данным, сохраняем её. */
+	XMVECTOR pos = XMVectorSet(m_eyePos.x, m_eyePos.y, m_eyePos.z, 1.0f);
 	XMVECTOR target = XMVectorZero();
 	XMVECTOR up = XMVectorSet(0.0f, 1.0f, 0.0f, 0.0f);
 	XMMATRIX view = XMMatrixLookAtLH(pos, target, up);
@@ -208,6 +208,10 @@ void D3D12Engine::UpdateCamera(const GameTimer & timer)
 }
 
 
+//! ==================================================   Обновление объектных констант   ==================================================
+/*
+   Объектные константы обновляются только если у модели поменялась соотв. константа. В этом случае обновляются буферы для текущего  и  всех
+последующих фрэйм-ресурсов.																												 */
 void D3D12Engine::UpdateObjectCB(const GameTimer & timer)
 {
 	auto objectCB = m_currFrame->ObjectCB.get();
@@ -224,6 +228,37 @@ void D3D12Engine::UpdateObjectCB(const GameTimer & timer)
 		}
 	}
 }
+
+void D3D12Engine::UpdatePassCB(const GameTimer & timer)
+{
+	XMMATRIX view = XMLoadFloat4x4(&m_view);
+	XMMATRIX proj = XMLoadFloat4x4(&m_proj);
+	XMMATRIX viewProj = view * proj;
+	XMMATRIX inv_view = XMMatrixInverse(&XMMatrixDeterminant(view), view);
+	XMMATRIX inv_proj = XMMatrixInverse(&XMMatrixDeterminant(proj), proj);
+	XMMATRIX inv_viewProj = XMMatrixInverse(&XMMatrixDeterminant(viewProj), viewProj);
+
+	XMStoreFloat4x4(&m_passConstant.view, XMMatrixTranspose(view));
+	XMStoreFloat4x4(&m_passConstant.proj, XMMatrixTranspose(proj));
+	XMStoreFloat4x4(&m_passConstant.viewProj, XMMatrixTranspose(viewProj));
+	XMStoreFloat4x4(&m_passConstant.inv_view, XMMatrixTranspose(inv_view));
+	XMStoreFloat4x4(&m_passConstant.inv_proj, XMMatrixTranspose(inv_proj));
+	XMStoreFloat4x4(&m_passConstant.inv_viewProj, XMMatrixTranspose(inv_viewProj));
+
+	m_passConstant.renderTargetSize = { (float)m_windowWidth, (float)m_windowHeight };
+	m_passConstant.inv_renderTargetSize = { 1.0f / m_windowWidth, 1.0f / m_windowHeight };
+
+	m_passConstant.eyePos_w = m_eyePos;
+	m_passConstant.nearZ = 1.0f;
+	m_passConstant.farZ = 1000.0f;
+	m_passConstant.totalTime = timer.TotalTime();
+	m_passConstant.deltaTime = timer.DeltaTime();
+
+	m_currFrame->PassCB->CopyData(0, m_passConstant);
+}
+
+
+
 
 
 //! ======================================================   Куча дескрипторов CBV   ======================================================
