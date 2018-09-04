@@ -21,6 +21,7 @@ private:
 	virtual void OnMouseUp(WPARAM btnState, int x, int y);
 	virtual void OnMouseMove(WPARAM btnState, int x, int y);
 
+	void OnKeyboardInput(const GameTimer &timer);
 	void UpdateCamera(const GameTimer &timer);
 	void UpdateObjectCB(const GameTimer &timer);
 	void UpdatePassCB(const GameTimer &timer);
@@ -50,11 +51,14 @@ private:
 	ComPtr<ID3D12DescriptorHeap> m_CBV_heap = nullptr;
 	ComPtr<ID3D12DescriptorHeap> m_cbvHeap = nullptr;			// Новая куча дескрипторов
 	ComPtr<ID3D12RootSignature> m_rootSignature = nullptr;
-	ComPtr<ID3D12PipelineState> m_pipelineState = nullptr;
+	//ComPtr<ID3D12PipelineState> m_pipelineState = nullptr;
 	ComPtr<ID3DBlob> m_vsByteCode = nullptr;
 	ComPtr<ID3DBlob> m_psByteCode = nullptr;
 	std::unique_ptr<MeshGeometry<2>> m_boxGeometry = nullptr;
 	std::unordered_map<std::string, std::unique_ptr<MeshGeometry<1>>> m_geometries;
+	std::unordered_map<std::string, ComPtr<ID3DBlob>> m_shaders_Vertex;
+	std::unordered_map<std::string, ComPtr<ID3DBlob>> m_shaders_Pixel;
+	std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> m_pipelineState;
 
 	std::unique_ptr<UploadBuffer<Constants>> m_constant_po_buf = nullptr;	// Константы пообъектные
 	std::unique_ptr<UploadBuffer<float>> m_constant_pf_buf = nullptr;		// Константы покадровые

@@ -9,10 +9,10 @@ cbuffer cbPerFrame : register(b1)
 	float gTime;
 }
 
-cbuffer cbPerFrame2 : register(b2)
-{
-	float gFactor;
-}
+//cbuffer cbPerFrame2 : register(b2)
+//{
+//	float gFactor;
+//}
 
 struct VertexIn
 {

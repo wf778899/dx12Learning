@@ -98,10 +98,10 @@
     </Image>
   </ItemGroup>
   <ItemGroup>
-    <FxCompile Include="Shaders\VertexShader.hlsl">
+    <FxCompile Include="Shaders\simplePS_01.hlsl">
       <Filter>Исходные файлы\Shaders</Filter>
     </FxCompile>
-    <FxCompile Include="Shaders\PixelShader.hlsl">
+    <FxCompile Include="Shaders\simpleVS_01.hlsl">
       <Filter>Исходные файлы\Shaders</Filter>
     </FxCompile>
   </ItemGroup>

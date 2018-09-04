@@ -51,13 +51,19 @@ void D3D12Engine::OnResize()
    Здесь каждый кадр меняем матрицы объектов и пишем их в константные буферы.															 */
 void D3D12Engine::Update(const GameTimer & timer)
 {
+	OnKeyboardInput(timer);
 	UpdateCamera(timer);
 
 	m_currFrameIndex = (m_currFrameIndex + 1) % g_numFrameResources;
 	m_currFrame = m_frameResources[m_currFrameIndex].get();
 
-	UpdateObjectCB(timer);
-	UpdatePassCB(timer);
+	if (m_currFrame->fenceVal != 0 && m_fence->GetCompletedValue() < m_currFrame->fenceVal)
+	{
+		HANDLE eventHandle = CreateEventEx(nullptr, false, false, EVENT_ALL_ACCESS);
+		ThrowIfFailed(m_fence->SetEventOnCompletion(m_currFrame->fenceVal, eventHandle));
+		WaitForSingleObject(eventHandle, INFINITE);
+		CloseHandle(eventHandle);
+	}
 
 	Constants constants;
 
@@ -82,7 +88,10 @@ void D3D12Engine::Update(const GameTimer & timer)
 
 	/* Заполняем буфер покадровых констант (он нужен только в иллюстративных целях)														 */
 	m_constant_pf_buf->CopyData(0, timer.TotalTime());
-	m_constant_pf_buf->CopyData(1, 5.0f);
+	//m_constant_pf_buf->CopyData(1, 5.0f);
+
+	UpdateObjectCB(timer);
+	UpdatePassCB(timer);
 }
 
 
@@ -91,9 +100,17 @@ void D3D12Engine::Update(const GameTimer & timer)
    Рисуем. */
 void D3D12Engine::Draw(const GameTimer &timer)
 {
-	/* Ресетим аллокатор и список команд для повторного использования																	 */
-	ThrowIfFailed(m_cmdAllocator->Reset());
-	ThrowIfFailed(m_cmdList->Reset(m_cmdAllocator.Get(), m_pipelineState.Get()));
+	auto cmdAllocator = m_currFrame->cmdAllocator;
+
+	/* Ресетим аллокатор текущего фрейм-ресурса																							 */
+	ThrowIfFailed(cmdAllocator->Reset());
+
+	if (m_wireFrame) {
+		ThrowIfFailed(m_cmdList->Reset(cmdAllocator.Get(), m_pipelineState["opaque_wireframe"].Get()));
+	}
+	else {
+		ThrowIfFailed(m_cmdList->Reset(cmdAllocator.Get(), m_pipelineState["opaque"].Get()));
+	}
 
 	/* Устанока вьюпорта и обрезки																										 */
 	m_cmdList->RSSetViewports(1, &m_viewPort);
@@ -118,8 +135,8 @@ void D3D12Engine::Draw(const GameTimer &timer)
 	m_cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
 
 	/* Устанавливаем буферы вершин и индексный буфер, сообщаем топологию отрисовки точек.												 */
-	m_cmdList->IASetVertexBuffers(0, 2, m_boxGeometry->VertexBufferViews());
-	m_cmdList->IASetIndexBuffer(&m_boxGeometry->IndexBufferView());
+	m_cmdList->IASetVertexBuffers(0, 1, m_geometries["primitives"]->VertexBufferViews());
+	m_cmdList->IASetIndexBuffer(&m_geometries["primitives"]->IndexBufferView());
 	m_cmdList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	/* Дескриптор для b1 (третий в куче). Устанавливаем его в соответствии с сигнатурой второму root-параметру и больше не меняем.		 */
@@ -129,12 +146,15 @@ void D3D12Engine::Draw(const GameTimer &timer)
 	/* Дескриптор для Куба (первый в куче). Устанавливаем его в соответствии с сигнатурой первому root-параметру и рисуем Куб.			 */
 	CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_CBV_heap->GetGPUDescriptorHandleForHeapStart());
 	m_cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
-	m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["box"].IndexCount, 1, m_boxGeometry->DrawArgs["box"].StartIndexLocation, m_boxGeometry->DrawArgs["box"].BaseVertexLocation, 0);
+	
+	m_cmdList->DrawIndexedInstanced(m_opaqueRenderItems[0]->indexCount, 1, m_opaqueRenderItems[0]->startIndex, m_opaqueRenderItems[0]->baseVertex, 0);
+	//m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["box"].IndexCount, 1, m_boxGeometry->DrawArgs["box"].StartIndexLocation, m_boxGeometry->DrawArgs["box"].BaseVertexLocation, 0);
 
 	/* Дескриптор для Пирамиды (второй в куче, получен смещением первого). Переустанавливаем его первому параметру и рисуем Пирамиду.	 */
 	cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize);
 	m_cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
-	m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["pyramide"].IndexCount, 1, m_boxGeometry->DrawArgs["pyramide"].StartIndexLocation, m_boxGeometry->DrawArgs["pyramide"].BaseVertexLocation, 0);
+	m_cmdList->DrawIndexedInstanced(m_opaqueRenderItems[1]->indexCount, 1, m_opaqueRenderItems[1]->startIndex, m_opaqueRenderItems[1]->baseVertex, 0);
+	//m_cmdList->DrawIndexedInstanced(m_boxGeometry->DrawArgs["pyramide"].IndexCount, 1, m_boxGeometry->DrawArgs["pyramide"].StartIndexLocation, m_boxGeometry->DrawArgs["pyramide"].BaseVertexLocation, 0);
 
 	/* STATE_RENDER_TARGET  ==>  STATE_PRESENT																							 */
 	m_cmdList->ResourceBarrier(
@@ -149,8 +169,14 @@ void D3D12Engine::Draw(const GameTimer &timer)
 	ThrowIfFailed(m_swapChain->Present(0, 0));
 	m_currentBackBuffer = (m_currentBackBuffer + 1) % m_swapChainBuffersCount;
 
-	FlushCommandQueue();
+
+	/* Увеличиваем значение Fence текущего фрейма, кидаем в очередь команд маркер этого значения										 */
+	m_currFrame->fenceVal = ++m_currentFence;
+	m_cmdQueue->Signal(m_fence.Get(), m_currFrame->fenceVal);
+	//FlushCommandQueue();
 }
+
+
 
 
 //! =================================================   Обработчик нажатия  кнопки мыши   =================================================
@@ -192,6 +218,16 @@ void D3D12Engine::OnMouseMove(WPARAM btnState, int x, int y)
 }
 
 
+//! ======================================================   Обработчик клавиатуры   ======================================================
+void D3D12Engine::OnKeyboardInput(const GameTimer & timer)
+{
+	if (GetAsyncKeyState('1') & 0x8000)
+		m_wireFrame = true;
+	else
+		m_wireFrame = false;
+}
+
+
 //! ========================================================   Обновляем  камеру   ========================================================
 void D3D12Engine::UpdateCamera(const GameTimer & timer)
 {
@@ -229,6 +265,8 @@ void D3D12Engine::UpdateObjectCB(const GameTimer & timer)
 	}
 }
 
+
+//! =================================================   Обновление  покадровых констант   =================================================
 void D3D12Engine::UpdatePassCB(const GameTimer & timer)
 {
 	XMMATRIX view = XMLoadFloat4x4(&m_view);
@@ -268,7 +306,7 @@ void D3D12Engine::UpdatePassCB(const GameTimer & timer)
 void D3D12Engine::CreateCbvDescriptorHeaps()
 {
 	D3D12_DESCRIPTOR_HEAP_DESC cbvHeapDesc;
-	cbvHeapDesc.NumDescriptors = 4;
+	cbvHeapDesc.NumDescriptors = 3;
 	cbvHeapDesc.Type = D3D12_DESCRIPTOR_HEAP_TYPE_CBV_SRV_UAV;
 	cbvHeapDesc.Flags = D3D12_DESCRIPTOR_HEAP_FLAG_SHADER_VISIBLE;
 	cbvHeapDesc.NodeMask = 0;
@@ -301,7 +339,7 @@ void D3D12Engine::BuildConstantBuffers()
 	/* Создаём константные буферы. Для этого используем UploadBuffer - он просто инстанцирует  в памяти GPU  буфер  и  предоставляет  метод
 	CopyData( индекс, данные ). Т.о. можно легко обновить буфер в любое время.															 */
 	m_constant_po_buf = std::make_unique<UploadBuffer<Constants>>(m_device.Get(), 2, true);	// Пообъектные константы (по числу объектов)
-	m_constant_pf_buf = std::make_unique<UploadBuffer<float>>(m_device.Get(), 2, true);		// Общие
+	m_constant_pf_buf = std::make_unique<UploadBuffer<float>>(m_device.Get(), 1, true);		// Общие
 
 	/* Размеры одного элемента буферов. */
 	const UINT cb_po_ElemByteSize = m_constant_po_buf->elementByteSize();
@@ -329,10 +367,10 @@ void D3D12Engine::BuildConstantBuffers()
 	cbvDesc.SizeInBytes = cb_pf_ElemByteSize;
 	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);	// Заполняем третий дескриптор (это общий)
 
-	cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize);
-	cbvDesc.BufferLocation += cb_pf_ElemByteSize;
-	cbvDesc.SizeInBytes = cb_pf_ElemByteSize;
-	m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);	// Заполняем четвёртый дескриптор (это общий)
+	//cbvHandle.Offset(1, m_CBV_SRV_UAV_descriptorSize);
+	//cbvDesc.BufferLocation += cb_pf_ElemByteSize;
+	//cbvDesc.SizeInBytes = cb_pf_ElemByteSize;
+	//m_device->CreateConstantBufferView(&cbvDesc, cbvHandle);	// Заполняем четвёртый дескриптор (это общий)
 }
 
 
@@ -412,7 +450,7 @@ void D3D12Engine::BuildRootSignature()
 	rootParameter[0].InitAsDescriptorTable(1, &cbvTable);
 
 	CD3DX12_DESCRIPTOR_RANGE cbvTable2;
-	cbvTable2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 2, 1);	// Диапазон из 2 дескрипторов подключается к шейдерам, начиная с b1
+	cbvTable2.Init(D3D12_DESCRIPTOR_RANGE_TYPE_CBV, 1, 1);	// Диапазон из 1 дескрипторов подключается к шейдерам, начиная с b1
 	rootParameter[1].InitAsDescriptorTable(1, &cbvTable2);
 
 	CD3DX12_ROOT_SIGNATURE_DESC rootSigDesc(2, rootParameter, 0, nullptr, D3D12_ROOT_SIGNATURE_FLAG_ALLOW_INPUT_ASSEMBLER_INPUT_LAYOUT);
@@ -437,17 +475,19 @@ void D3D12Engine::BuildRootSignature()
 void D3D12Engine::BuildShadersAndInputLayout()
 {
 	HRESULT hr = S_OK;
-	m_vsByteCode = Util::LoadBinary(L"cso/VertexShader.cso");
-	m_psByteCode = Util::LoadBinary(L"cso/PixelShader.cso");
+	m_shaders_Vertex["simpleVS_01"] = Util::LoadBinary(L"cso/simpleVS_01.cso");
+	m_shaders_Pixel["simplePS_01"] = Util::LoadBinary(L"cso/simplePS_01.cso");
+	//m_vsByteCode = Util::LoadBinary(L"cso/VertexShader.cso");
+	//m_psByteCode = Util::LoadBinary(L"cso/PixelShader.cso");
 
 	m_inputLayout =
 	{
 		/* "Семантика" "Индекс"      "Формат атрибута"      "Слот" "Оффсет"				     "?"                       "?" */
 		{  "POSITION",    0,    DXGI_FORMAT_R32G32B32_FLOAT,  0,      0,    D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{  "TEXCOORD",    0,    DXGI_FORMAT_R32G32_FLOAT,     0,      12,   D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{  "NORMAL",      0,    DXGI_FORMAT_R32G32B32_FLOAT,  1,      0,    D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{  "TANGENT",     0,    DXGI_FORMAT_R32G32B32_FLOAT,  1,      12,   D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
-		{  "COLOR",       0,    DXGI_FORMAT_B8G8R8A8_UNORM,   1,      24,   D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		//{  "TEXCOORD",    0,    DXGI_FORMAT_R32G32_FLOAT,     0,      12,   D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		//{  "NORMAL",      0,    DXGI_FORMAT_R32G32B32_FLOAT,  1,      0,    D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		//{  "TANGENT",     0,    DXGI_FORMAT_R32G32B32_FLOAT,  1,      12,   D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
+		{  "COLOR",       0,    DXGI_FORMAT_B8G8R8A8_UNORM,   0,      12,   D3D12_INPUT_CLASSIFICATION_PER_VERTEX_DATA, 0 },
 	};
 }
 
@@ -469,31 +509,36 @@ void D3D12Engine::BuildShadersAndInputLayout()
 	12. Настройки мультисэмлинга;																						(стр. 353 - 359) */
 void D3D12Engine::BuildPSO()
 {
-	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc;
-	ZeroMemory(&psoDesc, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
-	psoDesc.InputLayout = { m_inputLayout.data(), (UINT)m_inputLayout.size() };
-	psoDesc.pRootSignature = m_rootSignature.Get();
-	psoDesc.VS = 
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc_opaque;
+	ZeroMemory(&psoDesc_opaque, sizeof(D3D12_GRAPHICS_PIPELINE_STATE_DESC));
+	psoDesc_opaque.InputLayout = { m_inputLayout.data(), (UINT)m_inputLayout.size() };
+	psoDesc_opaque.pRootSignature = m_rootSignature.Get();
+	psoDesc_opaque.VS =
 	{ 
-		reinterpret_cast<BYTE*>(m_vsByteCode->GetBufferPointer()), 
-		m_vsByteCode->GetBufferSize() 
+		reinterpret_cast<BYTE*>(m_shaders_Vertex["simpleVS_01"]->GetBufferPointer()),
+		m_shaders_Vertex["simpleVS_01"]->GetBufferSize()
 	};
-	psoDesc.PS = 
+	psoDesc_opaque.PS =
 	{
-		reinterpret_cast<BYTE*>(m_psByteCode->GetBufferPointer()),
-		m_psByteCode->GetBufferSize()
+		reinterpret_cast<BYTE*>(m_shaders_Pixel["simplePS_01"]->GetBufferPointer()),
+		m_shaders_Pixel["simplePS_01"]->GetBufferSize()
 	};
-	psoDesc.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
-	psoDesc.BlendState = CD3XD12_BLEND_DESC(D3D12_DEFAULT);
-	psoDesc.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
-	psoDesc.SampleMask = UINT_MAX;
-	psoDesc.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
-	psoDesc.NumRenderTargets = 1;
-	psoDesc.RTVFormats[0] = m_backBufferFormat;
-	psoDesc.SampleDesc.Count = m_multisamplingEnabled ? 4 : 1;
-	psoDesc.SampleDesc.Quality = m_multisamplingEnabled ? (m_msQualityLevels - 1) : 0;
-	psoDesc.DSVFormat = m_DS_bufferFormat;
-	ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc, IID_PPV_ARGS(&m_pipelineState)));
+	psoDesc_opaque.RasterizerState = CD3DX12_RASTERIZER_DESC(D3D12_DEFAULT);
+	psoDesc_opaque.RasterizerState.FillMode = D3D12_FILL_MODE_SOLID;
+	psoDesc_opaque.BlendState = CD3XD12_BLEND_DESC(D3D12_DEFAULT);
+	psoDesc_opaque.DepthStencilState = CD3DX12_DEPTH_STENCIL_DESC(D3D12_DEFAULT);
+	psoDesc_opaque.SampleMask = UINT_MAX;
+	psoDesc_opaque.PrimitiveTopologyType = D3D12_PRIMITIVE_TOPOLOGY_TYPE_TRIANGLE;
+	psoDesc_opaque.NumRenderTargets = 1;
+	psoDesc_opaque.RTVFormats[0] = m_backBufferFormat;
+	psoDesc_opaque.SampleDesc.Count = m_multisamplingEnabled ? 4 : 1;
+	psoDesc_opaque.SampleDesc.Quality = m_multisamplingEnabled ? (m_msQualityLevels - 1) : 0;
+	psoDesc_opaque.DSVFormat = m_DS_bufferFormat;
+	ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc_opaque, IID_PPV_ARGS(&m_pipelineState["opaque"])));
+
+	D3D12_GRAPHICS_PIPELINE_STATE_DESC psoDesc_opaque_wireframe = psoDesc_opaque;
+	psoDesc_opaque_wireframe.RasterizerState.FillMode = D3D12_FILL_MODE_WIREFRAME;
+	ThrowIfFailed(m_device->CreateGraphicsPipelineState(&psoDesc_opaque_wireframe, IID_PPV_ARGS(&m_pipelineState["opaque_wireframe"])));
 }
 
 
@@ -613,9 +658,9 @@ void D3D12Engine::BuildGeometry()
 		/*===========(позиция вершины)==============(цвет)==========*/
 		// Куб
 		Vertex(XMFLOAT3(-1.0f,-1.0f,-1.0f), XMCOLOR(Colors::White)), Vertex(XMFLOAT3(-1.0f,+1.0f,-1.0f), XMCOLOR(Colors::Black)),
-		Vertex(XMFLOAT3(+1.0f,+1.0f,-1.0f), XMCOLOR(Colors::Red)), Vertex(XMFLOAT3(+1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Green)),
-		Vertex(XMFLOAT3(-1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Blue)), Vertex(XMFLOAT3(-1.0f,+1.0f,+1.0f), XMCOLOR(Colors::Yellow)),
-		Vertex(XMFLOAT3(+1.0f,+1.0f,+1.0f), XMCOLOR(Colors::Cyan)), Vertex(XMFLOAT3(+1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Magenta)),
+		Vertex(XMFLOAT3(+1.0f,+1.0f,-1.0f), XMCOLOR(Colors::Red)),   Vertex(XMFLOAT3(+1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Green)),
+		Vertex(XMFLOAT3(-1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Blue)),  Vertex(XMFLOAT3(-1.0f,+1.0f,+1.0f), XMCOLOR(Colors::Yellow)),
+		Vertex(XMFLOAT3(+1.0f,+1.0f,+1.0f), XMCOLOR(Colors::Cyan)),  Vertex(XMFLOAT3(+1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Magenta)),
 		// Пирамида
 		Vertex(XMFLOAT3(-1.0f,-1.0f,-1.0f), XMCOLOR(Colors::White)),
 		Vertex(XMFLOAT3(+1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Black)),
@@ -639,7 +684,7 @@ void D3D12Engine::BuildGeometry()
 
 	/* Строим геометрию */
 	std::unique_ptr<MeshGeometry<1>> shapes = std::make_unique<MeshGeometry<1>>();
-	shapes->Name = "Primitives";
+	shapes->Name = "primitives";
 	
 	shapes->vbMetrics->VertexBufferByteSize = vByteSize;
 	shapes->vbMetrics->VertexByteStride = sizeof(Vertex);
@@ -664,6 +709,7 @@ void D3D12Engine::BuildGeometry()
 	submesh.StartIndexLocation = 0;
 	submesh.BaseVertexLocation = 0;
 	shapes->DrawArgs["box"] = submesh;
+
 	submesh.IndexCount = 18;
 	submesh.StartIndexLocation = 36;
 	submesh.BaseVertexLocation = 8;
@@ -685,7 +731,7 @@ void D3D12Engine::BuildRenderItems()
 	auto pyramideItem = std::make_unique<RenderItem>(g_numFrameResources);
 
 	XMStoreFloat4x4(&boxItem->worldMatrix, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
-	boxItem->geometry = m_geometries["Primitives"].get();
+	boxItem->geometry = m_geometries["primitives"].get();
 	boxItem->primitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	boxItem->indexCount = boxItem->geometry->DrawArgs["box"].IndexCount;
 	boxItem->startIndex = boxItem->geometry->DrawArgs["box"].StartIndexLocation;
@@ -694,7 +740,7 @@ void D3D12Engine::BuildRenderItems()
 	m_allRenderItems.push_back(std::move(boxItem));
 
 	pyramideItem->worldMatrix = MathHelper::Identity4x4();
-	pyramideItem->geometry = m_geometries["Primitives"].get();
+	pyramideItem->geometry = m_geometries["primitives"].get();
 	pyramideItem->primitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	pyramideItem->indexCount = pyramideItem->geometry->DrawArgs["pyramide"].IndexCount;
 	pyramideItem->startIndex = pyramideItem->geometry->DrawArgs["pyramide"].StartIndexLocation;

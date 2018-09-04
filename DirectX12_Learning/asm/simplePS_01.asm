@@ -56,7 +56,7 @@ dcl_temps 2
 //   v1.x <- pin.Color.x; v1.y <- pin.Color.y; v1.z <- pin.Color.z; v1.w <- pin.Color.w; 
 //   o0.x <- <PS return value>.x; o0.y <- <PS return value>.y; o0.z <- <PS return value>.z; o0.w <- <PS return value>.w
 //
-#line 26 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\PixelShader.hlsl"
+#line 26 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\simplePS_01.hlsl"
 itof r0.x, l(2)
 mul r0.x, r0.x, cb1[0].x
 mov r0.y, l(-0.785398)
