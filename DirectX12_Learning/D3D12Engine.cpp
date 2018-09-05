@@ -20,7 +20,7 @@ bool D3D12Engine::Initialize()
 	ThrowIfFailed(m_cmdList->Reset(m_cmdAllocator.Get(), nullptr));
 	BuildRootSignature();
 	BuildShadersAndInputLayout();
-	BuildBoxGeometry();
+	//BuildBoxGeometry();
 	BuildGeometry();
 	BuildRenderItems();
 	BuildFrameResources();
@@ -65,30 +65,30 @@ void D3D12Engine::Update(const GameTimer & timer)
 		CloseHandle(eventHandle);
 	}
 
-	Constants constants;
+	//Constants constants;
 
-	XMMATRIX view = XMLoadFloat4x4(&m_view);
+	//XMMATRIX view = XMLoadFloat4x4(&m_view);
 
-	/* Получаем Projection-матрицу (получена ранее, в инициализирующем вызове OnResize()).												 */
-	XMMATRIX proj = XMLoadFloat4x4(&m_proj);
+	///* Получаем Projection-матрицу (получена ранее, в инициализирующем вызове OnResize()).												 */
+	//XMMATRIX proj = XMLoadFloat4x4(&m_proj);
 
-	/* Строим World-матрицу для Куба, вычисляем WVP-матрицу и пишем её в буфер пообъектных констант [0].								 */
-	XMMATRIX world = XMMatrixTranslation(-1.0f, -1.0f, -1.0f);
-	XMMATRIX worldViewProj = world * view * proj;
-	XMStoreFloat4x4(&constants.WorldViewProj, XMMatrixTranspose(worldViewProj));
-	constants.gPulseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	m_constant_po_buf->CopyData(0, constants);
+	///* Строим World-матрицу для Куба, вычисляем WVP-матрицу и пишем её в буфер пообъектных констант [0].								 */
+	//XMMATRIX world = XMMatrixTranslation(-1.0f, -1.0f, -1.0f);
+	//XMMATRIX worldViewProj = world * view * proj;
+	//XMStoreFloat4x4(&constants.WorldViewProj, XMMatrixTranspose(worldViewProj));
+	//constants.gPulseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	//m_constant_po_buf->CopyData(0, constants);
 
-	/* Строим World-матрицу для Пирамиды, вычисляем WVP-матрицу и пишем её в буфер пообъектных констант [1].							 */
-	world = XMMatrixTranslation(1.0f, -1.0f, -1.0f);
-	worldViewProj = world * view * proj;
-	XMStoreFloat4x4(&constants.WorldViewProj, XMMatrixTranspose(worldViewProj));
-	constants.gPulseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
-	m_constant_po_buf->CopyData(1, constants);
+	///* Строим World-матрицу для Пирамиды, вычисляем WVP-матрицу и пишем её в буфер пообъектных констант [1].							 */
+	//world = XMMatrixTranslation(1.0f, -1.0f, -1.0f);
+	//worldViewProj = world * view * proj;
+	//XMStoreFloat4x4(&constants.WorldViewProj, XMMatrixTranspose(worldViewProj));
+	//constants.gPulseColor = XMFLOAT4(1.0f, 1.0f, 1.0f, 1.0f);
+	//m_constant_po_buf->CopyData(1, constants);
 
-	/* Заполняем буфер покадровых констант (он нужен только в иллюстративных целях)														 */
-	m_constant_pf_buf->CopyData(0, timer.TotalTime());
-	//m_constant_pf_buf->CopyData(1, 5.0f);
+	///* Заполняем буфер покадровых констант (он нужен только в иллюстративных целях)														 */
+	//m_constant_pf_buf->CopyData(0, timer.TotalTime());
+	////m_constant_pf_buf->CopyData(1, 5.0f);
 
 	UpdateObjectCB(timer);
 	UpdatePassCB(timer);
@@ -100,6 +100,7 @@ void D3D12Engine::Update(const GameTimer & timer)
    Рисуем. */
 void D3D12Engine::Draw(const GameTimer &timer)
 {
+	Sleep(5);
 	auto cmdAllocator = m_currFrame->cmdAllocator;
 
 	/* Ресетим аллокатор текущего фрейм-ресурса																							 */
@@ -130,7 +131,7 @@ void D3D12Engine::Draw(const GameTimer &timer)
 													|____(Куб)___|_(Пирамида)_|_______b1_______|_______b2_______|						 */
 
 	/* Устанавливаем кучи дескрипторов и сигнатуру их подключения к слотам шейдеров														 */
-	ID3D12DescriptorHeap* descriptorHeaps[] = { m_CBV_heap.Get() };
+	ID3D12DescriptorHeap* descriptorHeaps[] = { m_cbvHeap.Get() };
 	m_cmdList->SetDescriptorHeaps(_countof(descriptorHeaps), descriptorHeaps);
 	m_cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
 
@@ -140,11 +141,13 @@ void D3D12Engine::Draw(const GameTimer &timer)
 	m_cmdList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
 	/* Дескриптор для b1 (третий в куче). Устанавливаем его в соответствии с сигнатурой второму root-параметру и больше не меняем.		 */
-	CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle2(m_CBV_heap->GetGPUDescriptorHandleForHeapStart(), 2, m_CBV_SRV_UAV_descriptorSize);
+	/*CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle2(m_CBV_heap->GetGPUDescriptorHandleForHeapStart(), 2, m_CBV_SRV_UAV_descriptorSize);*/
+	CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle2(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), m_passCBVoffset + m_currFrameIndex, m_CBV_SRV_UAV_descriptorSize);
 	m_cmdList->SetGraphicsRootDescriptorTable(1, cbvHandle2);
 
 	/* Дескриптор для Куба (первый в куче). Устанавливаем его в соответствии с сигнатурой первому root-параметру и рисуем Куб.			 */
-	CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_CBV_heap->GetGPUDescriptorHandleForHeapStart());
+	/*CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_CBV_heap->GetGPUDescriptorHandleForHeapStart());*/
+	CD3DX12_GPU_DESCRIPTOR_HANDLE cbvHandle(m_cbvHeap->GetGPUDescriptorHandleForHeapStart(), m_allRenderItems.size() * m_currFrameIndex, m_CBV_SRV_UAV_descriptorSize);
 	m_cmdList->SetGraphicsRootDescriptorTable(0, cbvHandle);
 	
 	m_cmdList->DrawIndexedInstanced(m_opaqueRenderItems[0]->indexCount, 1, m_opaqueRenderItems[0]->startIndex, m_opaqueRenderItems[0]->baseVertex, 0);
@@ -258,7 +261,7 @@ void D3D12Engine::UpdateObjectCB(const GameTimer & timer)
 		{
 			XMMATRIX world = XMLoadFloat4x4(&e->worldMatrix);
 			ObjectConstants constant;
-			XMStoreFloat4x4(&constant.world, world);
+			XMStoreFloat4x4(&constant.world, XMMatrixTranspose(world));
 			objectCB->CopyData(e->objectCB_index, constant);
 			e->durtyFrames--;
 		}
@@ -271,7 +274,7 @@ void D3D12Engine::UpdatePassCB(const GameTimer & timer)
 {
 	XMMATRIX view = XMLoadFloat4x4(&m_view);
 	XMMATRIX proj = XMLoadFloat4x4(&m_proj);
-	XMMATRIX viewProj = view * proj;
+	XMMATRIX viewProj = XMMatrixMultiply(view, proj);
 	XMMATRIX inv_view = XMMatrixInverse(&XMMatrixDeterminant(view), view);
 	XMMATRIX inv_proj = XMMatrixInverse(&XMMatrixDeterminant(proj), proj);
 	XMMATRIX inv_viewProj = XMMatrixInverse(&XMMatrixDeterminant(viewProj), viewProj);
@@ -294,9 +297,6 @@ void D3D12Engine::UpdatePassCB(const GameTimer & timer)
 
 	m_currFrame->PassCB->CopyData(0, m_passConstant);
 }
-
-
-
 
 
 //! ======================================================   Куча дескрипторов CBV   ======================================================
@@ -379,33 +379,64 @@ void D3D12Engine::BuildConstantBuffers()
    Привязываем дескрипторы кучи к константам для каждого фрейм-ресурса.											(стр. 337 - 339)		 */
 void D3D12Engine::Build_ConstantBuffers()
 {
-	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvObjectDescriptorHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart());
-	CD3DX12_CPU_DESCRIPTOR_HANDLE cbvPassDescriptorHandle(m_cbvHeap->GetCPUDescriptorHandleForHeapStart());
-	cbvPassDescriptorHandle.Offset(m_passCBVoffset, m_CBV_SRV_UAV_descriptorSize);
+	UINT objCBByteSize = Util::CalcConstantBufferByteSize(sizeof(ObjectConstants));
+	UINT objCount = (UINT)m_opaqueRenderItems.size();
 
-	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvObjectDesc;
-	D3D12_CONSTANT_BUFFER_VIEW_DESC cbvPassDesc;
-
-	for (int i = 0; i < g_numFrameResources; ++i)
+	// Need a CBV descriptor for each object for each frame resource.
+	for (int frameIndex = 0; frameIndex < g_numFrameResources; ++frameIndex)
 	{
-		D3D12_GPU_VIRTUAL_ADDRESS objectCB_va = m_frameResources[i]->ObjectCB->Resource()->GetGPUVirtualAddress();
-		D3D12_GPU_VIRTUAL_ADDRESS passCB_va = m_frameResources[i]->PassCB->Resource()->GetGPUVirtualAddress();
-		UINT objectCB_elemSize = m_frameResources[i]->ObjectCB->elementByteSize();
-		UINT passCB_elemSize = m_frameResources[i]->PassCB->elementByteSize();
-		for (int i = 0; i < m_allRenderItems.size(); ++i)
+		auto objectCB = m_frameResources[frameIndex]->ObjectCB->Resource();
+		for (UINT i = 0; i < objCount; ++i)
 		{
-			cbvObjectDesc.BufferLocation = objectCB_va;
-			cbvObjectDesc.SizeInBytes = objectCB_elemSize;
-			m_device->CreateConstantBufferView(&cbvObjectDesc, cbvObjectDescriptorHandle);
-			cbvObjectDesc.BufferLocation += objectCB_elemSize;
-			cbvObjectDescriptorHandle.Offset(m_CBV_SRV_UAV_descriptorSize);
+			D3D12_GPU_VIRTUAL_ADDRESS cbAddress = objectCB->GetGPUVirtualAddress();
+			// Offset to the ith object constant buffer in the buffer.
+			cbAddress += i * objCBByteSize;
+			// Offset to the object cbv in the descriptor heap.
+			int heapIndex = frameIndex * objCount + i;
+			auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_cbvHeap->GetCPUDescriptorHandleForHeapStart());
+			handle.Offset(heapIndex, m_CBV_SRV_UAV_descriptorSize);
+			D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+			cbvDesc.BufferLocation = cbAddress;
+			cbvDesc.SizeInBytes = objCBByteSize;
+			m_device->CreateConstantBufferView(&cbvDesc, handle);
 		}
-		cbvPassDesc.BufferLocation = passCB_va;
-		cbvPassDesc.SizeInBytes = passCB_elemSize;
-		m_device->CreateConstantBufferView(&cbvPassDesc, cbvPassDescriptorHandle);
-		cbvPassDesc.BufferLocation += passCB_elemSize;
-		cbvPassDescriptorHandle.Offset(m_CBV_SRV_UAV_descriptorSize);
 	}
+	UINT passCBByteSize = Util::CalcConstantBufferByteSize(sizeof(PassConstants));
+	// Last three descriptors are the pass CBVs for each frame resource.
+	for (int frameIndex = 0; frameIndex < g_numFrameResources; ++frameIndex)
+	{
+		auto passCB = m_frameResources[frameIndex]->PassCB->Resource();
+		D3D12_GPU_VIRTUAL_ADDRESS cbAddress = passCB->GetGPUVirtualAddress();
+		// Offset to the pass cbv in the descriptor heap.
+		int heapIndex = m_passCBVoffset + frameIndex;
+		auto handle = CD3DX12_CPU_DESCRIPTOR_HANDLE(m_cbvHeap->GetCPUDescriptorHandleForHeapStart());
+		handle.Offset(heapIndex, m_CBV_SRV_UAV_descriptorSize);
+		D3D12_CONSTANT_BUFFER_VIEW_DESC cbvDesc;
+		cbvDesc.BufferLocation = cbAddress;
+		cbvDesc.SizeInBytes = passCBByteSize;
+		m_device->CreateConstantBufferView(&cbvDesc, handle);
+	}
+
+	//for (int i = 0; i < g_numFrameResources; ++i)
+	//{
+	//	D3D12_GPU_VIRTUAL_ADDRESS objectCB_va = m_frameResources[i]->ObjectCB->Resource()->GetGPUVirtualAddress();
+	//	D3D12_GPU_VIRTUAL_ADDRESS passCB_va = m_frameResources[i]->PassCB->Resource()->GetGPUVirtualAddress();
+	//	UINT objectCB_elemSize = m_frameResources[i]->ObjectCB->elementByteSize();
+	//	UINT passCB_elemSize = m_frameResources[i]->PassCB->elementByteSize();
+	//	for (int i = 0; i < m_allRenderItems.size(); ++i)
+	//	{
+	//		cbvObjectDesc.BufferLocation = objectCB_va;
+	//		cbvObjectDesc.SizeInBytes = objectCB_elemSize;
+	//		m_device->CreateConstantBufferView(&cbvObjectDesc, cbvObjectDescriptorHandle);
+	//		cbvObjectDesc.BufferLocation += objectCB_elemSize;
+	//		cbvObjectDescriptorHandle.Offset(m_CBV_SRV_UAV_descriptorSize);
+	//	}
+	//	cbvPassDesc.BufferLocation = passCB_va;
+	//	cbvPassDesc.SizeInBytes = passCB_elemSize;
+	//	m_device->CreateConstantBufferView(&cbvPassDesc, cbvPassDescriptorHandle);
+	//	cbvPassDesc.BufferLocation += passCB_elemSize;
+	//	cbvPassDescriptorHandle.Offset(m_CBV_SRV_UAV_descriptorSize);
+	//}
 }
 
 
@@ -657,16 +688,20 @@ void D3D12Engine::BuildGeometry()
 	{
 		/*===========(позиция вершины)==============(цвет)==========*/
 		// Куб
-		Vertex(XMFLOAT3(-1.0f,-1.0f,-1.0f), XMCOLOR(Colors::White)), Vertex(XMFLOAT3(-1.0f,+1.0f,-1.0f), XMCOLOR(Colors::Black)),
-		Vertex(XMFLOAT3(+1.0f,+1.0f,-1.0f), XMCOLOR(Colors::Red)),   Vertex(XMFLOAT3(+1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Green)),
-		Vertex(XMFLOAT3(-1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Blue)),  Vertex(XMFLOAT3(-1.0f,+1.0f,+1.0f), XMCOLOR(Colors::Yellow)),
-		Vertex(XMFLOAT3(+1.0f,+1.0f,+1.0f), XMCOLOR(Colors::Cyan)),  Vertex(XMFLOAT3(+1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Magenta)),
-		// Пирамида
 		Vertex(XMFLOAT3(-1.0f,-1.0f,-1.0f), XMCOLOR(Colors::White)),
-		Vertex(XMFLOAT3(+1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Black)),
+		Vertex(XMFLOAT3(-1.0f,+1.0f,-1.0f), XMCOLOR(Colors::White)),
+		Vertex(XMFLOAT3(+1.0f,+1.0f,-1.0f), XMCOLOR(Colors::White)),
+		Vertex(XMFLOAT3(+1.0f,-1.0f,-1.0f), XMCOLOR(Colors::White)),
+		Vertex(XMFLOAT3(-1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Red)),
+		Vertex(XMFLOAT3(-1.0f,+1.0f,+1.0f), XMCOLOR(Colors::Red)),
+		Vertex(XMFLOAT3(+1.0f,+1.0f,+1.0f), XMCOLOR(Colors::Red)),
 		Vertex(XMFLOAT3(+1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Red)),
-		Vertex(XMFLOAT3(-1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Green)),
-		Vertex(XMFLOAT3(0.0f,+2.0f, 0.0f), XMCOLOR(Colors::Blue)),
+		// Пирамида
+		Vertex(XMFLOAT3(-1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Magenta)),
+		Vertex(XMFLOAT3(+1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Magenta)),
+		Vertex(XMFLOAT3(+1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Magenta)),
+		Vertex(XMFLOAT3(-1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Magenta)),
+		Vertex(XMFLOAT3(0.0f,+2.0f, 0.0f), XMCOLOR(Colors::Magenta)),
 	};
 
 	std::array<std::uint16_t, 54> indices =
@@ -730,7 +765,7 @@ void D3D12Engine::BuildRenderItems()
 	auto boxItem = std::make_unique<RenderItem>(g_numFrameResources);
 	auto pyramideItem = std::make_unique<RenderItem>(g_numFrameResources);
 
-	XMStoreFloat4x4(&boxItem->worldMatrix, XMMatrixScaling(1.0f, 1.0f, 1.0f) * XMMatrixTranslation(0.0f, 0.5f, 0.0f));
+	XMStoreFloat4x4(&boxItem->worldMatrix, XMMatrixScaling(2.0f, 2.0f, 2.0f) * XMMatrixTranslation(3.0f, 0.0f, 0.0f));
 	boxItem->geometry = m_geometries["primitives"].get();
 	boxItem->primitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	boxItem->indexCount = boxItem->geometry->DrawArgs["box"].IndexCount;
@@ -739,7 +774,7 @@ void D3D12Engine::BuildRenderItems()
 	boxItem->objectCB_index = 0;
 	m_allRenderItems.push_back(std::move(boxItem));
 
-	pyramideItem->worldMatrix = MathHelper::Identity4x4();
+	XMStoreFloat4x4(&pyramideItem->worldMatrix, XMMatrixTranslation(-3.0f, 0.0f, 0.0f));
 	pyramideItem->geometry = m_geometries["primitives"].get();
 	pyramideItem->primitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
 	pyramideItem->indexCount = pyramideItem->geometry->DrawArgs["pyramide"].IndexCount;

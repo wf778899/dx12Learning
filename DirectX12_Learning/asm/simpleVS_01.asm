@@ -7,8 +7,27 @@
 // cbuffer cbPerObject
 // {
 //
-//   float4x4 gWorldViewProj;           // Offset:    0 Size:    64
-//   float4 gPulseColor;                // Offset:   64 Size:    16 [unused]
+//   float4x4 gWorld;                   // Offset:    0 Size:    64
+//
+// }
+//
+// cbuffer cbPerPass
+// {
+//
+//   float4x4 gView;                    // Offset:    0 Size:    64 [unused]
+//   float4x4 gProj;                    // Offset:   64 Size:    64 [unused]
+//   float4x4 gViewProj;                // Offset:  128 Size:    64
+//   float4x4 gInv_view;                // Offset:  192 Size:    64 [unused]
+//   float4x4 gInv_proj;                // Offset:  256 Size:    64 [unused]
+//   float4x4 gInv_viewProj;            // Offset:  320 Size:    64 [unused]
+//   float3 gEyePos_w;                  // Offset:  384 Size:    12 [unused]
+//   float gCb_perObjectPad1;           // Offset:  396 Size:     4 [unused]
+//   float2 gRenderTargetSize;          // Offset:  400 Size:     8 [unused]
+//   float2 gInv_renderTargetSize;      // Offset:  408 Size:     8 [unused]
+//   float gNearZ;                      // Offset:  416 Size:     4 [unused]
+//   float gFarZ;                       // Offset:  420 Size:     4 [unused]
+//   float gTotalTime;                  // Offset:  424 Size:     4 [unused]
+//   float gDeltaTime;                  // Offset:  428 Size:     4 [unused]
 //
 // }
 //
@@ -18,6 +37,7 @@
 // Name                                 Type  Format         Dim      HLSL Bind  Count
 // ------------------------------ ---------- ------- ----------- -------------- ------
 // cbPerObject                       cbuffer      NA          NA            cb0      1 
+// cbPerPass                         cbuffer      NA          NA            cb1      1 
 //
 //
 //
@@ -39,6 +59,7 @@
 vs_5_0
 dcl_globalFlags refactoringAllowed | skipOptimization
 dcl_constantbuffer CB0[4], immediateIndexed
+dcl_constantbuffer CB1[12], immediateIndexed
 dcl_input v0.xyz
 dcl_input v1.xyzw
 dcl_output_siv o0.xyzw, position
@@ -51,19 +72,25 @@ dcl_temps 2
 //   o1.x <- <VS return value>.Color.x; o1.y <- <VS return value>.Color.y; o1.z <- <VS return value>.Color.z; o1.w <- <VS return value>.Color.w; 
 //   o0.x <- <VS return value>.PosH.x; o0.y <- <VS return value>.PosH.y; o0.z <- <VS return value>.PosH.z; o0.w <- <VS return value>.PosH.w
 //
-#line 34 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\simpleVS_01.hlsl"
+#line 57 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\simpleVS_01.hlsl"
 mov r0.xyz, v0.xyzx
 mov r0.w, l(1.000000)
-dp4 r1.x, r0.xyzw, cb0[0].xyzw  // r1.x <- vout.PosH.x
-dp4 r1.y, r0.xyzw, cb0[1].xyzw  // r1.y <- vout.PosH.y
-dp4 r1.z, r0.xyzw, cb0[2].xyzw  // r1.z <- vout.PosH.z
-dp4 r1.w, r0.xyzw, cb0[3].xyzw  // r1.w <- vout.PosH.w
+dp4 r1.x, r0.xyzw, cb0[0].xyzw  // r1.x <- posW.x
+dp4 r1.y, r0.xyzw, cb0[1].xyzw  // r1.y <- posW.y
+dp4 r1.z, r0.xyzw, cb0[2].xyzw  // r1.z <- posW.z
+dp4 r1.w, r0.xyzw, cb0[3].xyzw  // r1.w <- posW.w
 
-#line 36
-mov r0.xyzw, v1.xyzw  // r0.x <- vout.Color.x; r0.y <- vout.Color.y; r0.z <- vout.Color.z; r0.w <- vout.Color.w
+#line 58
+dp4 r0.x, r1.xyzw, cb1[8].xyzw  // r0.x <- vout.PosH.x
+dp4 r0.y, r1.xyzw, cb1[9].xyzw  // r0.y <- vout.PosH.y
+dp4 r0.z, r1.xyzw, cb1[10].xyzw  // r0.z <- vout.PosH.z
+dp4 r0.w, r1.xyzw, cb1[11].xyzw  // r0.w <- vout.PosH.w
 
-#line 37
-mov o0.xyzw, r1.xyzw
-mov o1.xyzw, r0.xyzw
+#line 60
+mov r1.xyzw, v1.xyzw  // r1.x <- vout.Color.x; r1.y <- vout.Color.y; r1.z <- vout.Color.z; r1.w <- vout.Color.w
+
+#line 61
+mov o0.xyzw, r0.xyzw
+mov o1.xyzw, r1.xyzw
 ret 
-// Approximately 10 instruction slots used
+// Approximately 14 instruction slots used
