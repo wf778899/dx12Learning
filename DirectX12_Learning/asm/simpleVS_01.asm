@@ -72,7 +72,7 @@ dcl_temps 2
 //   o1.x <- <VS return value>.Color.x; o1.y <- <VS return value>.Color.y; o1.z <- <VS return value>.Color.z; o1.w <- <VS return value>.Color.w; 
 //   o0.x <- <VS return value>.PosH.x; o0.y <- <VS return value>.PosH.y; o0.z <- <VS return value>.PosH.z; o0.w <- <VS return value>.PosH.w
 //
-#line 57 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\simpleVS_01.hlsl"
+#line 40 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\simpleVS_01.hlsl"
 mov r0.xyz, v0.xyzx
 mov r0.w, l(1.000000)
 dp4 r1.x, r0.xyzw, cb0[0].xyzw  // r1.x <- posW.x
@@ -80,16 +80,16 @@ dp4 r1.y, r0.xyzw, cb0[1].xyzw  // r1.y <- posW.y
 dp4 r1.z, r0.xyzw, cb0[2].xyzw  // r1.z <- posW.z
 dp4 r1.w, r0.xyzw, cb0[3].xyzw  // r1.w <- posW.w
 
-#line 58
+#line 41
 dp4 r0.x, r1.xyzw, cb1[8].xyzw  // r0.x <- vout.PosH.x
 dp4 r0.y, r1.xyzw, cb1[9].xyzw  // r0.y <- vout.PosH.y
 dp4 r0.z, r1.xyzw, cb1[10].xyzw  // r0.z <- vout.PosH.z
 dp4 r0.w, r1.xyzw, cb1[11].xyzw  // r0.w <- vout.PosH.w
 
-#line 60
+#line 43
 mov r1.xyzw, v1.xyzw  // r1.x <- vout.Color.x; r1.y <- vout.Color.y; r1.z <- vout.Color.z; r1.w <- vout.Color.w
 
-#line 61
+#line 44
 mov o0.xyzw, r0.xyzw
 mov o1.xyzw, r1.xyzw
 ret 

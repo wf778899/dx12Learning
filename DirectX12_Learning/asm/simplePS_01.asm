@@ -27,7 +27,7 @@ dcl_output o0.xyzw
 //   v1.x <- pin.Color.x; v1.y <- pin.Color.y; v1.z <- pin.Color.z; v1.w <- pin.Color.w; 
 //   o0.x <- <PS return value>.x; o0.y <- <PS return value>.y; o0.z <- <PS return value>.z; o0.w <- <PS return value>.w
 //
-#line 51 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\simplePS_01.hlsl"
+#line 32 "E:\Projects\Visual Community 2017\DirectX12_Learning\DirectX12_Learning\DirectX12_Learning\Shaders\simplePS_01.hlsl"
 mov o0.xyzw, v1.xyzw
 ret 
 // Approximately 2 instruction slots used

@@ -1,14 +1,3 @@
-//cbuffer cbPerObject : register(b0)
-//{
-//	float4x4 gWorldViewProj;
-//	float4 gPulseColor;
-//};
-
-//cbuffer cbPerFrame : register(b1)
-//{
-//	float gTime;
-//}
-
 cbuffer cbPerObject : register(b0)
 {
 	float4x4 gWorld;
@@ -31,10 +20,6 @@ cbuffer cbPerPass : register(b1)
 	float gTotalTime;
 	float gDeltaTime;
 }
-//cbuffer cbPerFrame2 : register(b2)
-//{
-//	float gFactor;
-//}
 
 struct VertexIn
 {
@@ -50,13 +35,11 @@ struct VertexOut
 
 VertexOut VS(VertexIn vin)
 {
-	//vin.PosL.xy += 0.5 * sin(vin.PosL.x) * sin(3.0 * gTime);
-	//vin.PosL.z *= 0.6f + 0.4 * sin(2.0f * gTime);
 	VertexOut vout;
 
 	float4 posW = mul(float4(vin.PosL, 1.0f), gWorld);
 	vout.PosH = mul(posW, gViewProj);
 
-	vout.Color = vin.Color;
+	vout.Color = float4(vin.Color);
 	return vout;
 }
