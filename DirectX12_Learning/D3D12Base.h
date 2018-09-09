@@ -2,6 +2,7 @@
 
 #include "GameTimer.h"
 #include "FrameResources.h"
+#include "Helpers/GeometryGenerator.h"
 
 class D3D12Base
 {

@@ -1,5 +1,8 @@
 #pragma once
 
+using namespace DirectX;
+using namespace DirectX::PackedVector;
+
 class MathHelper
 {
 public:

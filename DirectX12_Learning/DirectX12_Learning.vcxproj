@@ -152,6 +152,8 @@
     <ClInclude Include="D3D12Engine.h" />
     <ClInclude Include="FrameResources.h" />
     <ClInclude Include="GameTimer.h" />
+    <ClInclude Include="Helpers\d3dx12.h" />
+    <ClInclude Include="Helpers\GeometryGenerator.h" />
     <ClInclude Include="Helpers\MathHelper.h" />
     <ClInclude Include="Helpers\Utilites.h" />
     <ClInclude Include="Resource.h" />
@@ -164,6 +166,9 @@
     <ClCompile Include="D3D12Engine.cpp" />
     <ClCompile Include="FrameResources.cpp" />
     <ClCompile Include="GameTimer.cpp" />
+    <ClCompile Include="Helpers\GeometryGenerator.cpp">
+      <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">../stdafx.h</PrecompiledHeaderFile>
+    </ClCompile>
     <ClCompile Include="Helpers\MathHelper.cpp">
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|Win32'">../stdafx.h</PrecompiledHeaderFile>
       <PrecompiledHeaderFile Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">../stdafx.h</PrecompiledHeaderFile>

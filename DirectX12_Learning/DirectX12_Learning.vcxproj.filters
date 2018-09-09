@@ -54,6 +54,12 @@
     <ClInclude Include="FrameResources.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
+    <ClInclude Include="Helpers\d3dx12.h">
+      <Filter>Файлы заголовков\Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="Helpers\GeometryGenerator.h">
+      <Filter>Файлы заголовков\Helpers</Filter>
+    </ClInclude>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="stdafx.cpp">
@@ -82,6 +88,9 @@
     </ClCompile>
     <ClCompile Include="FrameResources.cpp">
       <Filter>Исходные файлы</Filter>
+    </ClCompile>
+    <ClCompile Include="Helpers\GeometryGenerator.cpp">
+      <Filter>Исходные файлы\Helpers</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>
