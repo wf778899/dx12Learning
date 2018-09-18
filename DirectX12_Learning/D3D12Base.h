@@ -1,8 +1,9 @@
 #pragma once
 
-#include "GameTimer.h"
-#include "FrameResources.h"
-#include "Helpers/GeometryGenerator.h"
+#include "Timers/GameTimer.h"
+
+using Microsoft::WRL::ComPtr;
+
 
 class D3D12Base
 {

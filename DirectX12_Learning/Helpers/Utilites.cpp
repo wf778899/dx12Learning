@@ -1,5 +1,73 @@
 #include "../stdafx.h"
+
+#include "d3dx12.h"
 #include "Utilites.h"
+#include "../Exceptions/DxException.h"
+
+template <UINT MaxSubresources> UINT64 UpdateSubresources(
+															_In_ ID3D12GraphicsCommandList *cmdList,
+															_In_ ID3D12Resource *destinationResource,
+															_In_ ID3D12Resource *sourceResource,
+															UINT64 sourceOffset,
+															_In_range_(0, MaxSubresources) UINT firstSubresource,
+															_In_range_(1, MaxSubresources - firstSubresource) UINT numSubresources,
+															_In_reads_(numSubresources) D3D12_SUBRESOURCE_DATA *sourceData)
+{
+	UINT64 requiredSize = 0;
+	D3D12_PLACED_SUBRESOURCE_FOOTPRINT layouts[MaxSubresources];
+	UINT numRows[MaxSubresources];
+	UINT64 rowSizesInBytes[MaxSubresources];
+
+	D3D12_RESOURCE_DESC desc = destinationResource->GetDesc();
+	ID3D12Device *device;
+	destinationResource->GetDevice(__uuidof(*device), reinterpret_cast<void**>(&device));
+	device->GetCopyableFootprints(&desc, firstSubresource, numSubresources, sourceOffset, layouts, numRows, rowSizesInBytes, &requiredSize);
+	device->Release();
+
+	D3D12_RESOURCE_DESC sourceDesc = sourceResource->GetDesc();
+	D3D12_RESOURCE_DESC destinDesc = destinationResource->GetDesc();
+
+	if (sourceDesc.Dimension != D3D12_RESOURCE_DIMENSION_BUFFER || sourceDesc.Width < requiredSize + layouts[0].Offset || requiredSize >(SIZE_T) - 1 ||
+		(destinDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER && (firstSubresource != 0 || numSubresources != 1))) {
+		return 0;
+	}
+
+	BYTE *data;
+	if (FAILED(sourceResource->Map(0, NULL, reinterpret_cast<void**>(&data))))
+		return 0;
+
+	for (UINT i = 0; i < numSubresources; ++i) {
+		if (rowSizesInBytes[i] >(SIZE_T)-1)
+			return 0;
+		D3D12_MEMCPY_DEST destData = { data + layouts[i].Offset, layouts[i].Footprint.RowPitch, layouts[i].Footprint.RowPitch * numRows[i] };
+		MemcpySubresource(&destData, &sourceData[i], (SIZE_T)rowSizesInBytes[i], numRows[i], layouts[i].Footprint.Depth);
+	}
+	sourceResource->Unmap(0, NULL);
+	if (destinDesc.Dimension == D3D12_RESOURCE_DIMENSION_BUFFER) {
+		CD3DX12_BOX srcBox(UINT(layouts[0].Offset), UINT(layouts[0].Offset + layouts[0].Footprint.Width));
+		cmdList->CopyBufferRegion(destinationResource, 0, sourceResource, layouts[0].Offset, layouts[0].Footprint.Width);
+	}
+	else {
+		for (UINT i = 0; i < numSubresources; ++i) {
+			CD3DX12_TEXTURE_COPY_LOCATION Dst(destinationResource, i + firstSubresource);
+			CD3DX12_TEXTURE_COPY_LOCATION Src(sourceResource, layouts[i]);
+			cmdList->CopyTextureRegion(&Dst, 0, 0, 0, &Src, nullptr);
+		}
+	}
+	return requiredSize;
+}
+
+
+void MemcpySubresource(_In_ const D3D12_MEMCPY_DEST *dest, _In_ const D3D12_SUBRESOURCE_DATA *srcData, SIZE_T rowSizeInBytes, UINT numRows, UINT numSlices)
+{
+	for (UINT i = 0; i < numSlices; ++i) {
+		BYTE *destSlice = reinterpret_cast<BYTE*>(dest->pData) + dest->SlicePitch * i;
+		const BYTE *srcSlice = reinterpret_cast<const BYTE*>(srcData->pData) + srcData->SlicePitch * i;
+		for (UINT k = 0; k < numRows; ++k) {
+			memcpy(destSlice + dest->RowPitch * k, srcSlice + srcData->RowPitch * k, rowSizeInBytes);
+		}
+	}
+}
 
 
 //! =======================================================   CreateDefaultBuffer   =======================================================
@@ -49,6 +117,7 @@ ComPtr<ID3D12Resource> Util::CreateDefaultBuffer(ID3D12Device *device,
 }
 
 
+
 //! =================================================   Создание ID3DBlob из .cso-файла   =================================================
 /*
    Просто открывает в бинарном режиме файл предварительно скомпилированного шейдера и загружает его в Blob.								 */
@@ -66,6 +135,7 @@ ComPtr<ID3DBlob> Util::LoadBinary(const std::wstring &fileName)
 	fin.close();
 	return blob;
 }
+
 
 
 //! =================================================   Создание ID3DBlob из .txt-файла   =================================================

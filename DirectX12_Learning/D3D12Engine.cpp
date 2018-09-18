@@ -1,7 +1,14 @@
 #include "stdafx.h"
-#include "D3D12Engine.h"
 
-const UINT g_numFrameResources = 30;
+#include "D3D12Engine.h"
+#include "Definitions/Vertexes_defs.h"
+#include "Helpers/GeometryGenerator.h"
+#include "Exceptions/DxException.h"
+#include "FrameResources.h"
+
+
+const UINT g_numFrameResources = 3;
+
 
 //! ============================================================  Конструктор  ============================================================
 D3D12Engine::D3D12Engine(HINSTANCE hInstance) : D3D12Base(hInstance) {}
@@ -210,7 +217,7 @@ void D3D12Engine::Draw(const GameTimer &timer)
 		1, &CD3DX12_RESOURCE_BARRIER::Transition(CurrentBackBuffer(), D3D12_RESOURCE_STATE_PRESENT, D3D12_RESOURCE_STATE_RENDER_TARGET));
 
 	/* Очищаем текущий back-буфер и буфер глубин. Подключаем их к Output Merger'у.														 */
-	m_cmdList->ClearRenderTargetView(CurrentBackBufferView(), DirectX::Colors::DarkViolet, 0, nullptr);
+	m_cmdList->ClearRenderTargetView(CurrentBackBufferView(), DirectX::Colors::Black, 0, nullptr);
 	m_cmdList->ClearDepthStencilView(DepthStencilView(), D3D12_CLEAR_FLAG_DEPTH | D3D12_CLEAR_FLAG_STENCIL, 1.0f, 0, 0, nullptr);
 	m_cmdList->OMSetRenderTargets(1, &CurrentBackBufferView(), true, &DepthStencilView());
 
@@ -221,7 +228,7 @@ void D3D12Engine::Draw(const GameTimer &timer)
 	m_cmdList->SetGraphicsRootSignature(m_rootSignature.Get());
 
 	/* Устанавливаем буферы вершин и индексный буфер, сообщаем топологию отрисовки точек.												 */
-	m_cmdList->IASetVertexBuffers(0, 1, m_geometries["primitives"]->VertexBufferViews());
+	m_cmdList->IASetVertexBuffers(0, 1, &m_geometries["primitives"]->VertexBufferViews());
 	m_cmdList->IASetIndexBuffer(&m_geometries["primitives"]->IndexBufferView());
 	m_cmdList->IASetPrimitiveTopology(D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST);
 
@@ -444,76 +451,58 @@ void D3D12Engine::BuildPSO()
 это топология отдельных моделей в этих буферах. */
 void D3D12Engine::BuildGeometry()
 {
-	const UINT64 numVertices = 13;
+	// Генерим меши
+	GeometryGenerator shapeCreator;
+	GeometryGenerator::MeshData cylinder = shapeCreator.CreateCylinder(0.3f, 0.3f, 1.0f, 40, 25);
 
-	std::array<Vertex, numVertices> vertices =
+	UINT cylinderVertexOffset = 0;
+
+	UINT cylinderIndexOffset = 0;
+
+	SubmeshGeometry cylinderSubmesh;
+	cylinderSubmesh.IndexCount = (UINT32)cylinder.indices32.size();
+	cylinderSubmesh.BaseVertexLocation = cylinderVertexOffset;
+	cylinderSubmesh.StartIndexLocation = cylinderIndexOffset;
+
+	auto totalVerticesCount = cylinder.vertices.size();
+
+	std::vector<Vertex> Vertices(totalVerticesCount);
+	std::vector<std::uint16_t> Indices;
+
+	UINT32 k = 0;
+	for (size_t i = 0; i < cylinder.vertices.size(); ++i, ++k)
 	{
-		/*===========(позиция вершины)==============(цвет)==========*/
-		// Куб
-		Vertex(XMFLOAT3(-1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Red)),
-		Vertex(XMFLOAT3(-1.0f,+1.0f,-1.0f), XMCOLOR(Colors::Green)),
-		Vertex(XMFLOAT3(+1.0f,+1.0f,-1.0f), XMCOLOR(Colors::White)),
-		Vertex(XMFLOAT3(+1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Green)),
-		Vertex(XMFLOAT3(-1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Red)),
-		Vertex(XMFLOAT3(-1.0f,+1.0f,+1.0f), XMCOLOR(Colors::Green)),
-		Vertex(XMFLOAT3(+1.0f,+1.0f,+1.0f), XMCOLOR(Colors::Red)),
-		Vertex(XMFLOAT3(+1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Green)),
-		// Пирамида
-		Vertex(XMFLOAT3(-1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Red)),
-		Vertex(XMFLOAT3(+1.0f,-1.0f,-1.0f), XMCOLOR(Colors::Green)),
-		Vertex(XMFLOAT3(+1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Red)),
-		Vertex(XMFLOAT3(-1.0f,-1.0f,+1.0f), XMCOLOR(Colors::Green)),
-		Vertex(XMFLOAT3(0.0f,+2.0f, 0.0f), XMCOLOR(Colors::White)),
-	};
+		Vertices[k].Position = cylinder.vertices[i].position;
+		Vertices[k].Color = XMCOLOR(DirectX::Colors::DarkGreen);
+	}
 
-	std::array<std::uint16_t, 54> indices =
-	{
-		// Куб
-		/*=== Front ======|====== Back =======|====== Left =======|====== Right ======|======= Top =======|==== Bottom ====*/
-		0, 1, 2, 0, 2, 3,   4, 6, 5, 4, 7, 6,   4, 5, 1, 4, 1, 0,   3, 2, 6, 3, 6, 7,   1, 5, 6, 1, 6, 2,   4, 0, 3, 4, 3, 7,
-		// Пирамида
-		/*=== Bottom =====|= Front ==|= Right ==|= Back ===|= Left*/
-		1, 3, 0, 1, 2, 3,	0, 4, 1,   1, 4, 2,   2, 4, 3,   3, 4, 0
-	};
+	Indices.insert(Indices.end(), std::begin(cylinder.GetIndices16()), std::end(cylinder.GetIndices16()));
 
-	UINT vByteSize = vertices.size() * sizeof(Vertex);
-	UINT iByteSize = indices.size() * sizeof(std::uint16_t);
+	const UINT vByteSize = (UINT)Vertices.size() * sizeof(Vertex);
+	const UINT iByteSize = (UINT)Indices.size() * sizeof(std::uint16_t);
 
-	/* Строим геометрию */
-	std::unique_ptr<MeshGeometry<1>> shapes = std::make_unique<MeshGeometry<1>>();
+	std::unique_ptr<MeshGeometry> shapes = std::make_unique<MeshGeometry>();
 	shapes->Name = "primitives";
-	
-	shapes->vbMetrics->VertexBufferByteSize = vByteSize;
-	shapes->vbMetrics->VertexByteStride = sizeof(Vertex);
+	shapes->vbMetrics.VertexBufferByteSize = vByteSize;
+	shapes->vbMetrics.VertexByteStride = sizeof(Vertex);
 	shapes->IndexBufferByteSize = iByteSize;
 	shapes->IndexFormat = DXGI_FORMAT_R16_UINT;
 
 	/* Сохраняем геометрию на стороне CPU */
-	ThrowIfFailed(D3DCreateBlob(vByteSize, &shapes->VBufferCPU[0]));
+	ThrowIfFailed(D3DCreateBlob(vByteSize, &shapes->VBufferCPU));
 	ThrowIfFailed(D3DCreateBlob(iByteSize, &shapes->IndexBufferCPU));
-	CopyMemory(shapes->VBufferCPU[0]->GetBufferPointer(), vertices.data(), vByteSize);
-	CopyMemory(shapes->IndexBufferCPU->GetBufferPointer(), indices.data(), iByteSize);
+	CopyMemory(shapes->VBufferCPU->GetBufferPointer(), Vertices.data(), vByteSize);
+	CopyMemory(shapes->IndexBufferCPU->GetBufferPointer(), Indices.data(), iByteSize);
 
 	/* Строим буферы в GPU, сохраняем в них геометрию */
-	shapes->VBufferGPU[0] = 
-		Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), vertices.data(), vByteSize, shapes->VertexBufferUploader);
+	shapes->VBufferGPU = 
+		Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), Vertices.data(), vByteSize, shapes->VertexBufferUploader);
 	shapes->IndexBufferGPU =
-		Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), indices.data(), iByteSize, shapes->IndexBufferUploader);
+		Util::CreateDefaultBuffer(m_device.Get(), m_cmdList.Get(), Indices.data(), iByteSize, shapes->IndexBufferUploader);
 
-	/* Расположение моделей в буферах */
-	SubmeshGeometry submesh;
-	submesh.IndexCount = 36;
-	submesh.StartIndexLocation = 0;
-	submesh.BaseVertexLocation = 0;
-	shapes->DrawArgs["box"] = submesh;
-
-	submesh.IndexCount = 18;
-	submesh.StartIndexLocation = 36;
-	submesh.BaseVertexLocation = 8;
-	shapes->DrawArgs["pyramide"] = submesh;
+	shapes->DrawArgs["cylinder"] = cylinderSubmesh;
 
 	m_geometries[shapes->Name] = std::move(shapes);
-	return;
 }
 
 
@@ -527,21 +516,21 @@ void D3D12Engine::BuildRenderItems()
 	auto boxItem = std::make_unique<RenderItem>(g_numFrameResources);
 	auto pyramideItem = std::make_unique<RenderItem>(g_numFrameResources);
 
-	XMStoreFloat4x4(&boxItem->worldMatrix, DirectX::XMMatrixScaling(2.0f, 2.0f, 2.0f) * DirectX::XMMatrixTranslation(3.0f, 0.0f, 0.0f));
+	XMStoreFloat4x4(&boxItem->worldMatrix, DirectX::XMMatrixTranslation(1.0f, 0.0f, 0.0f));
 	boxItem->geometry = m_geometries["primitives"].get();
 	boxItem->primitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-	boxItem->indexCount = boxItem->geometry->DrawArgs["box"].IndexCount;
-	boxItem->startIndex = boxItem->geometry->DrawArgs["box"].StartIndexLocation;
-	boxItem->baseVertex = boxItem->geometry->DrawArgs["box"].BaseVertexLocation;
+	boxItem->indexCount = boxItem->geometry->DrawArgs["cylinder"].IndexCount;
+	boxItem->startIndex = boxItem->geometry->DrawArgs["cylinder"].StartIndexLocation;
+	boxItem->baseVertex = boxItem->geometry->DrawArgs["cylinder"].BaseVertexLocation;
 	boxItem->objectCB_index = 0;
 	m_allRenderItems.push_back(std::move(boxItem));
 
-	XMStoreFloat4x4(&pyramideItem->worldMatrix, DirectX::XMMatrixTranslation(-3.0f, 2.0f, 0.0f));
+	XMStoreFloat4x4(&pyramideItem->worldMatrix, DirectX::XMMatrixTranslation(-1.0f, 0.0f, 0.0f));
 	pyramideItem->geometry = m_geometries["primitives"].get();
 	pyramideItem->primitiveType = D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-	pyramideItem->indexCount = pyramideItem->geometry->DrawArgs["pyramide"].IndexCount;
-	pyramideItem->startIndex = pyramideItem->geometry->DrawArgs["pyramide"].StartIndexLocation;
-	pyramideItem->baseVertex = pyramideItem->geometry->DrawArgs["pyramide"].BaseVertexLocation;
+	pyramideItem->indexCount = pyramideItem->geometry->DrawArgs["cylinder"].IndexCount;
+	pyramideItem->startIndex = pyramideItem->geometry->DrawArgs["cylinder"].StartIndexLocation;
+	pyramideItem->baseVertex = pyramideItem->geometry->DrawArgs["cylinder"].BaseVertexLocation;
 	pyramideItem->objectCB_index = 1;
 	m_allRenderItems.push_back(std::move(pyramideItem));
 

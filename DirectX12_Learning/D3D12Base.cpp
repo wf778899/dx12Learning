@@ -1,5 +1,9 @@
 #include "stdafx.h"
+
 #include "D3D12Base.h"
+#include "Helpers/Utilites.h"
+#include "Helpers/d3dx12.h"
+#include "Exceptions/DxException.h"
 
 D3D12Base* D3D12Base::m_directXApplication = nullptr;	// Инстанс синглтона приложения.
 

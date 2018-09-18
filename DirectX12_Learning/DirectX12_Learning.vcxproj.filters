@@ -22,6 +22,21 @@
     <Filter Include="Исходные файлы\Shaders">
       <UniqueIdentifier>{ef1309b1-fd92-4b76-aea7-c3d465eb551c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="Исходные файлы\Timers">
+      <UniqueIdentifier>{bf4557be-f320-404d-b454-0e0049ecda8e}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Файлы заголовков\Timers">
+      <UniqueIdentifier>{656deb51-51e2-419a-86d0-9bce7734e346}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Исходные файлы\Definitions">
+      <UniqueIdentifier>{8a31bd24-188d-4c2c-b6aa-2b3bf92bcfe7}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Исходные файлы\Exceptions">
+      <UniqueIdentifier>{0a6cad84-cb6f-493b-8f7e-b366970c61f5}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="Файлы заголовков\Exceptions">
+      <UniqueIdentifier>{3f076440-5e55-4beb-b2ef-79624ee543c5}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="stdafx.h">
@@ -42,9 +57,6 @@
     <ClInclude Include="Helpers\Utilites.h">
       <Filter>Файлы заголовков\Helpers</Filter>
     </ClInclude>
-    <ClInclude Include="GameTimer.h">
-      <Filter>Файлы заголовков</Filter>
-    </ClInclude>
     <ClInclude Include="UploadBuffer.h">
       <Filter>Файлы заголовков</Filter>
     </ClInclude>
@@ -59,6 +71,21 @@
     </ClInclude>
     <ClInclude Include="Helpers\GeometryGenerator.h">
       <Filter>Файлы заголовков\Helpers</Filter>
+    </ClInclude>
+    <ClInclude Include="Timers\GameTimer.h">
+      <Filter>Исходные файлы\Timers</Filter>
+    </ClInclude>
+    <ClInclude Include="Definitions\Constants_defs.h">
+      <Filter>Исходные файлы\Definitions</Filter>
+    </ClInclude>
+    <ClInclude Include="Definitions\Vertexes_defs.h">
+      <Filter>Исходные файлы\Definitions</Filter>
+    </ClInclude>
+    <ClInclude Include="Definitions\Meshes_wraps.h">
+      <Filter>Исходные файлы\Definitions</Filter>
+    </ClInclude>
+    <ClInclude Include="Exceptions\DxException.h">
+      <Filter>Исходные файлы\Exceptions</Filter>
     </ClInclude>
   </ItemGroup>
   <ItemGroup>
@@ -77,12 +104,6 @@
     <ClCompile Include="Helpers\Utilites.cpp">
       <Filter>Исходные файлы\Helpers</Filter>
     </ClCompile>
-    <ClCompile Include="GameTimer.cpp">
-      <Filter>Исходные файлы</Filter>
-    </ClCompile>
-    <ClCompile Include="UploadBuffer.cpp">
-      <Filter>Исходные файлы</Filter>
-    </ClCompile>
     <ClCompile Include="Helpers\MathHelper.cpp">
       <Filter>Исходные файлы\Helpers</Filter>
     </ClCompile>
@@ -91,6 +112,12 @@
     </ClCompile>
     <ClCompile Include="Helpers\GeometryGenerator.cpp">
       <Filter>Исходные файлы\Helpers</Filter>
+    </ClCompile>
+    <ClCompile Include="Timers\GameTimer.cpp">
+      <Filter>Файлы заголовков\Timers</Filter>
+    </ClCompile>
+    <ClCompile Include="Exceptions\DxException.cpp">
+      <Filter>Файлы заголовков\Exceptions</Filter>
     </ClCompile>
   </ItemGroup>
   <ItemGroup>

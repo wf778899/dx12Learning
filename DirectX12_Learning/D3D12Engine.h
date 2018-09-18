@@ -2,6 +2,10 @@
 
 #include "D3D12Base.h"
 
+#include "Definitions/Meshes_wraps.h"
+#include "Definitions/Constants_defs.h"
+
+class FrameResources;
 class D3D12Engine : public D3D12Base
 {
 public:
@@ -13,8 +17,6 @@ public:
 	virtual bool Initialize() override;
 
 private:
-
-
 
 	virtual void OnResize() override;
 	virtual void OnMouseDown(WPARAM btnState, int x, int y);
@@ -43,7 +45,7 @@ private:
 	std::vector<std::unique_ptr<FrameResources>> m_frameResources;	// Массив покадровых ресурсов
 	std::vector<D3D12_INPUT_ELEMENT_DESC> m_inputLayout;
 
-	std::unordered_map<std::string, std::unique_ptr<MeshGeometry<1>>> m_geometries;
+	std::unordered_map<std::string, std::unique_ptr<MeshGeometry>> m_geometries;
 	std::unordered_map<std::string, ComPtr<ID3DBlob>> m_shaders_Vertex;
 	std::unordered_map<std::string, ComPtr<ID3DBlob>> m_shaders_Pixel;
 	std::unordered_map<std::string, ComPtr<ID3D12PipelineState>> m_pipelineState;
